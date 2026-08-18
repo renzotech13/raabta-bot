@@ -5,18 +5,36 @@ reagenda y cancela citas de forma autónoma vía WhatsApp Cloud API + Claude.
 
 ## Estado
 
-**Fase 1 (estructura y webhook)** — completa:
-- Servidor Fastify con TypeScript estricto.
-- `GET /webhook` — verificación de Meta.
-- `POST /webhook` — valida `X-Hub-Signature-256`, responde 200 de inmediato,
-  procesa async, deduplica por `message.id`, ignora tipos no soportados.
-- `whatsapp/parser.ts` — normaliza el payload de Meta (texto, audio, botones/listas
-  interactivos; delivery receipts y tipos no manejados se descartan).
-- `whatsapp/client.ts` — `sendText`, `sendButtons` contra la Graph API.
-- Logger estructurado (pino) con redacción de teléfonos en todos los niveles.
+**Fase 1 (estructura y webhook)** — completa: servidor Fastify, verificación
+y recepción de webhooks con validación de firma, dedupe, parser de payloads
+de Meta, cliente de envío, logger con redacción de teléfonos.
 
-**Pendiente**: capa de datos (Supabase — mismo proyecto que `web/`/`admin/`),
-agente con tools, Google Calendar, despliegue.
+**Fase 2 (capa de datos)** — completa: esquema en Supabase (clientes, citas,
+horario comercial, bloqueos, conversaciones, mensajes), con protección real
+contra doble-reserva vía `EXCLUDE` constraint de Postgres (no un chequeo
+manual en transacción). Motor de disponibilidad puro en TypeScript
+(`lib/availability.ts`), 18 tests. Verificado con un test de concurrencia
+real contra la base de datos.
+
+**Fase 3 (el agente)** — completa:
+- 7 tools (`agent/tools/`): `consultar_servicios`, `consultar_disponibilidad`,
+  `agendar_cita`, `consultar_mis_citas`, `reagendar_cita`, `cancelar_cita`,
+  `escalar_a_humano`. Cada una valida su input con Zod antes de ejecutar, y
+  el teléfono del cliente viene siempre del contexto del mensaje real —
+  nunca de un parámetro que el modelo podría pasar mal.
+- `agent/systemPrompt.ts` — catálogo, horario y políticas reales inyectados
+  desde Supabase en cada llamada.
+- `agent/runner.ts` — loop de tool use con Claude (`claude-sonnet-5`, prompt
+  cacheado), máximo 5 iteraciones; agotarlas o cualquier error termina en un
+  mensaje de fallback y la conversación escalada, nunca en silencio.
+- `agent/handleMessage.ts` — conecta el webhook con el runner: persiste
+  clientes/conversaciones/mensajes, aplica timeout de 25s, envía la
+  respuesta por WhatsApp.
+- Política de cancelación (30 min de antelación) aplicada de verdad en el
+  repositorio, no solo mencionada en el prompt.
+
+**Pendiente**: Google Calendar (Fase 4), seguridad/rate-limiting/despliegue
+(Fase 5).
 
 ## Desarrollo local
 
@@ -26,7 +44,9 @@ cp .env.example .env   # completar credenciales reales
 npm run dev
 ```
 
-`GET /health` para healthcheck. `npm test` corre los tests de Vitest.
+`GET /health` para healthcheck. `npm test` corre los tests de Vitest —
+todos corren sin credenciales reales excepto `tests/citas.concurrency.test.ts`,
+que se salta automáticamente si falta `SUPABASE_SERVICE_ROLE_KEY`.
 
 ## Decisión de arquitectura: Supabase en vez de SQLite
 

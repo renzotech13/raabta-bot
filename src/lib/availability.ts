@@ -156,7 +156,7 @@ export function getAvailableSlots(params: {
  * instante UTC. Usa Intl para resolver el offset real del timezone en esa
  * fecha (robusto ante cambios de reglas, aunque Lima no tiene DST hoy).
  */
-function timeStringToUtcDate(fechaLocal: string, time: string, timezone: string): Date {
+export function timeStringToUtcDate(fechaLocal: string, time: string, timezone: string): Date {
   const naiveUtc = new Date(`${fechaLocal}T${time}:00Z`);
   const localAtNaiveUtc = getLocalWeekdayAndTime(naiveUtc, timezone).time;
   const [naiveHour, naiveMinute] = time.split(":").map(Number);

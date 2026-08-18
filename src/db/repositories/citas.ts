@@ -1,6 +1,7 @@
 import { supabase } from "../client.js";
 import { getBusinessHours } from "./businessHours.js";
 import { getBloqueosEnRango } from "./bloqueos.js";
+import { getServiceById } from "./services.js";
 import { isSlotAvailable, type ExistingCita } from "../../lib/availability.js";
 import { BUFFER_MINUTES, MIN_LEAD_MINUTES, BUSINESS_TIMEZONE } from "../../config/business.js";
 
@@ -117,7 +118,9 @@ export async function listarCitasFuturasPorTelefono(telefono: string): Promise<C
   return data as Cita[];
 }
 
-export type MutarCitaResult = { ok: true; cita: Cita } | { ok: false; reason: "no_encontrada" | "no_autorizado" };
+export type MutarCitaResult =
+  | { ok: true; cita: Cita }
+  | { ok: false; reason: "no_encontrada" | "no_autorizado" | "fuera_de_politica_cancelacion" };
 
 async function getCitaSiPerteneceATelefono(citaId: string, telefono: string): Promise<Cita | null> {
   const { data, error } = await supabase
@@ -130,9 +133,22 @@ async function getCitaSiPerteneceATelefono(citaId: string, telefono: string): Pr
   return data as Cita | null;
 }
 
+/**
+ * Política real del negocio (mismo texto que reserva.html): cancelar con
+ * al menos 30 minutos de antelación. Se aplica acá, no solo se le pide al
+ * modelo que la mencione — así una cancelación de último minuto se
+ * rechaza aunque el agente se equivoque.
+ */
+const MIN_CANCEL_LEAD_MINUTES = 30;
+
 export async function cancelarCita(citaId: string, telefono: string, motivo?: string): Promise<MutarCitaResult> {
   const existing = await getCitaSiPerteneceATelefono(citaId, telefono);
   if (!existing) return { ok: false, reason: "no_autorizado" };
+
+  const minutosParaLaCita = (new Date(existing.inicio_utc).getTime() - Date.now()) / 60_000;
+  if (minutosParaLaCita < MIN_CANCEL_LEAD_MINUTES) {
+    return { ok: false, reason: "fuera_de_politica_cancelacion" };
+  }
 
   const { data, error } = await supabase
     .from("citas")
@@ -148,10 +164,15 @@ export async function reagendarCita(params: {
   citaId: string;
   telefono: string;
   nuevoInicioUtc: Date;
-  nuevoFinUtc: Date;
 }): Promise<CrearCitaResult | MutarCitaResult> {
   const existing = await getCitaSiPerteneceATelefono(params.citaId, params.telefono);
   if (!existing) return { ok: false, reason: "no_autorizado" };
+
+  // La duración es la del servicio original, no un valor que el llamador
+  // deba calcular — evita que un caller pase un fin_utc inconsistente.
+  const servicio = await getServiceById(existing.servicio_id);
+  if (!servicio?.duration_minutes) return { ok: false, reason: "conflicto_horario" };
+  const nuevoFinUtc = new Date(params.nuevoInicioUtc.getTime() + servicio.duration_minutes * 60_000);
 
   // Reagendar = cancelar la actual + crear una nueva: así la validación de
   // disponibilidad (incluida la protección del EXCLUDE constraint) es
@@ -163,7 +184,7 @@ export async function reagendarCita(params: {
     clienteId: existing.cliente_id,
     servicioId: existing.servicio_id,
     inicioUtc: params.nuevoInicioUtc,
-    finUtc: params.nuevoFinUtc,
+    finUtc: nuevoFinUtc,
     creadaPor: existing.creada_por,
     notas: `Reagendada desde cita ${params.citaId}`,
   });

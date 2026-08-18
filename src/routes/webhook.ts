@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../config/env.js";
 import { logger } from "../lib/logger.js";
 import { parseInboundMessages } from "../whatsapp/parser.js";
+import { handleInboundMessage } from "../agent/handleMessage.js";
 
 // Fase 1: dedup en memoria (suficiente para una sola instancia). Cuando
 // pasemos a persistencia real (Fase 2, Supabase), esto debe respaldarse en
@@ -42,8 +43,11 @@ async function processWebhookAsync(body: unknown): Promise<void> {
       logger.info({ messageId: message.id, messageType: message.messageType }, "Tipo de mensaje no soportado, se ignora");
       continue;
     }
-    // Fase 3 conecta esto con agent/runner.ts. Por ahora solo se registra.
-    logger.info({ messageId: message.id, kind: message.kind, from: message.from }, "Mensaje entrante recibido");
+    try {
+      await handleInboundMessage(message);
+    } catch (err) {
+      logger.error({ err, messageId: message.id }, "Fallo manejando el mensaje entrante");
+    }
   }
 }
 
