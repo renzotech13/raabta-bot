@@ -2,8 +2,11 @@ import { supabase } from "../client.js";
 import { getBusinessHours } from "./businessHours.js";
 import { getBloqueosEnRango } from "./bloqueos.js";
 import { getServiceById } from "./services.js";
+import { getClienteById } from "./clientes.js";
+import { createCalendarEvent, deleteCalendarEvent } from "../../calendar/google.js";
 import { isSlotAvailable, type ExistingCita } from "../../lib/availability.js";
 import { BUFFER_MINUTES, MIN_LEAD_MINUTES, BUSINESS_TIMEZONE } from "../../config/business.js";
+import { logger } from "../../lib/logger.js";
 
 export type Cita = {
   id: string;
@@ -83,7 +86,33 @@ export async function crearCita(params: {
     throw error;
   }
 
-  return { ok: true, cita: data as Cita };
+  const cita = data as Cita;
+
+  // El calendario nunca bloquea la reserva: si falla, la cita queda
+  // igual creada con google_event_id null, y retrySync.ts la reintenta
+  // después. No se espera bloqueante más que esta llamada en sí (que ya
+  // atrapa sus propios errores y nunca lanza).
+  const [servicio, cliente] = await Promise.all([getServiceById(cita.servicio_id), getClienteById(cita.cliente_id)]);
+  if (servicio && cliente) {
+    const eventId = await createCalendarEvent({
+      servicioNombre: servicio.name,
+      clienteNombre: cliente.nombre,
+      clienteTelefono: cliente.telefono,
+      inicioUtc: new Date(cita.inicio_utc),
+      finUtc: new Date(cita.fin_utc),
+      notas: cita.notas,
+    });
+    if (eventId) {
+      const { error: updateError } = await supabase.from("citas").update({ google_event_id: eventId }).eq("id", cita.id);
+      if (updateError) {
+        logger.error({ err: updateError, citaId: cita.id }, "No se pudo guardar el google_event_id en la cita");
+      } else {
+        cita.google_event_id = eventId;
+      }
+    }
+  }
+
+  return { ok: true, cita };
 }
 
 async function listarCitasEnRango(desdeUtc: Date, hastaUtc: Date): Promise<ExistingCita[]> {
@@ -157,6 +186,14 @@ export async function cancelarCita(citaId: string, telefono: string, motivo?: st
     .select("*")
     .single();
   if (error) throw error;
+
+  // Best-effort: si el borrado del evento falla, la cancelación en la BD
+  // ya quedó hecha de todos modos — el calendario nunca revierte una
+  // acción que ya afecta al negocio real.
+  if (existing.google_event_id) {
+    await deleteCalendarEvent(existing.google_event_id);
+  }
+
   return { ok: true, cita: data as Cita };
 }
 

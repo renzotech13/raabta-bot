@@ -33,8 +33,24 @@ real contra la base de datos.
 - Política de cancelación (30 min de antelación) aplicada de verdad en el
   repositorio, no solo mencionada en el prompt.
 
-**Pendiente**: Google Calendar (Fase 4), seguridad/rate-limiting/despliegue
-(Fase 5).
+**Fase 4 (Google Calendar + click-to-chat)** — completa:
+- `calendar/google.ts` — crea/actualiza/borra eventos vía Service Account
+  (`googleapis`). Las tres funciones atrapan cualquier error y devuelven
+  `null`/`false` en vez de lanzar: el calendario nunca bloquea una reserva.
+- `citas.ts` (repositorio) sincroniza el calendario automáticamente al
+  crear y cancelar citas — `reagendarCita()` lo hereda gratis, ya que por
+  dentro cancela la cita vieja y crea una nueva.
+- `calendar/retrySync.ts` — barrido cada 5 min (`setInterval` en
+  `index.ts`) que reintenta las citas confirmadas sin `google_event_id`.
+- Botón click-to-chat: ya existía en `web/` (`index.html`, `salon.html`,
+  `academia.html`) apuntando al WhatsApp humano actual — se le agregó un
+  mensaje precargado. **El número se mantiene igual por ahora**: el día
+  que exista el número nuevo dedicado al bot, el cambio es reemplazarlo
+  en esos mismos 6 enlaces `wa.me/...`.
+
+**Pendiente**: seguridad/rate-limiting/despliegue (Fase 5) — incluye la
+ventana de servicio de 24h de Meta, tope de gasto diario, Docker, y el
+número de WhatsApp nuevo (requiere verificación de Meta Business).
 
 ## Desarrollo local
 

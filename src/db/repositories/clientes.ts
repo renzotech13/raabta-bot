@@ -43,3 +43,9 @@ export async function findOrCreateByPhone(telefono: string, nombre?: string): Pr
   }
   return created as Cliente;
 }
+
+export async function getClienteById(id: string): Promise<Cliente | null> {
+  const { data, error } = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data as Cliente | null;
+}

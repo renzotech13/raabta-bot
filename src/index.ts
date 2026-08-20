@@ -3,6 +3,9 @@ import { env } from "./config/env.js";
 import { logger } from "./lib/logger.js";
 import { healthRoutes } from "./routes/health.js";
 import { webhookRoutes } from "./routes/webhook.js";
+import { syncPendingCitas } from "./calendar/retrySync.js";
+
+const CALENDAR_RETRY_INTERVAL_MS = 5 * 60_000;
 
 const app = Fastify({ loggerInstance: logger, trustProxy: true });
 
@@ -34,3 +37,9 @@ try {
   logger.error({ err }, "No se pudo iniciar el servidor");
   process.exit(1);
 }
+
+setInterval(() => {
+  syncPendingCitas().catch((err: unknown) => {
+    logger.error({ err }, "Fallo el barrido de reintento de Google Calendar");
+  });
+}, CALENDAR_RETRY_INTERVAL_MS);
