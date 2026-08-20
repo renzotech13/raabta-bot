@@ -1,8 +1,10 @@
+import { env } from "../config/env.js";
 import { logger } from "../lib/logger.js";
+import { isRateLimited } from "../lib/rateLimit.js";
 import { findOrCreateByPhone } from "../db/repositories/clientes.js";
 import { getOrCreateConversacionActiva, marcarUltimoMensaje, escalarConversacion } from "../db/repositories/conversaciones.js";
 import { guardarMensaje } from "../db/repositories/mensajes.js";
-import { sendText } from "../whatsapp/client.js";
+import { sendTextIfWindowOpen } from "../whatsapp/window.js";
 import { runAgent, FALLBACK_MESSAGE } from "./runner.js";
 import type { InboundMessage } from "../whatsapp/parser.js";
 
@@ -38,6 +40,13 @@ async function runAgentWithTimeout(
 }
 
 export async function handleInboundMessage(message: InboundMessage): Promise<void> {
+  if (isRateLimited(message.from, env.RATE_LIMIT_MAX_PER_MINUTE)) {
+    // Se descarta sin responder: una respuesta (aunque sea de rechazo)
+    // premia el abuso con engagement y gasta una llamada a la Graph API.
+    logger.warn({ from: message.from }, "Mensaje descartado por rate limit");
+    return;
+  }
+
   const cliente = await findOrCreateByPhone(message.from, message.contactName);
   const conversacion = await getOrCreateConversacionActiva(cliente.id);
 
@@ -50,7 +59,7 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
   if (message.kind === "audio") {
     const texto = "Por ahora no puedo escuchar audios 🙏 ¿me lo escribes en un mensaje de texto?";
     await guardarMensaje({ conversacionId: conversacion.id, rol: "assistant", contenido: texto });
-    await sendText(message.from, texto);
+    await sendTextIfWindowOpen(message.from, texto);
     return;
   }
 
@@ -81,5 +90,5 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
   }
 
   await guardarMensaje({ conversacionId: conversacion.id, rol: "assistant", contenido: respuesta });
-  await sendText(message.from, respuesta);
+  await sendTextIfWindowOpen(message.from, respuesta);
 }

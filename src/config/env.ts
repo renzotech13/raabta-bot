@@ -20,6 +20,9 @@ const envSchema = z.object({
   ESCALATION_PHONE: z.string().min(1),
   SITE_CATALOG_URL: z.string().url().optional(),
 
+  RATE_LIMIT_MAX_PER_MINUTE: z.coerce.number().int().positive().default(20),
+  DAILY_TOKEN_BUDGET: z.coerce.number().int().positive().default(500_000),
+
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });
 

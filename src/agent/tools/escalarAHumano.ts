@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AgentTool } from "./types.js";
 import { escalarConversacion } from "../../db/repositories/conversaciones.js";
-import { sendText } from "../../whatsapp/client.js";
+import { sendTextIfWindowOpen } from "../../whatsapp/window.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
 
@@ -28,7 +28,7 @@ export const escalarAHumanoTool: AgentTool<z.infer<typeof inputSchema>> = {
     await escalarConversacion(ctx.conversacionId);
 
     try {
-      await sendText(
+      await sendTextIfWindowOpen(
         env.ESCALATION_PHONE,
         `Conversación escalada. Cliente: ${ctx.contactName ?? "sin nombre"} (${ctx.telefono}). Motivo: ${input.motivo}`,
       );

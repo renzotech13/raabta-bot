@@ -48,9 +48,27 @@ real contra la base de datos.
   que exista el número nuevo dedicado al bot, el cambio es reemplazarlo
   en esos mismos 6 enlaces `wa.me/...`.
 
-**Pendiente**: seguridad/rate-limiting/despliegue (Fase 5) — incluye la
-ventana de servicio de 24h de Meta, tope de gasto diario, Docker, y el
-número de WhatsApp nuevo (requiere verificación de Meta Business).
+**Fase 5 (seguridad, costos y despliegue)** — completa:
+- `lib/rateLimit.ts` — máx. `RATE_LIMIT_MAX_PER_MINUTE` (default 20)
+  mensajes/minuto por teléfono; el exceso se descarta sin responder.
+- `db/repositories/usage.ts` + tabla `bot_daily_usage` (Supabase, no en
+  memoria — sobrevive a un restart) — tope diario de tokens
+  (`DAILY_TOKEN_BUDGET`, default 500,000). Al superarlo, el bot deja de
+  llamar a Claude, responde un mensaje fijo, y avisa a
+  `ESCALATION_PHONE` (máximo una vez por hora).
+- `whatsapp/window.ts` — respeta la ventana de servicio de 24h de Meta;
+  fuera de ventana no intenta texto libre, solo lo deja registrado para
+  seguimiento manual. Se usa tanto para la respuesta al cliente como para
+  el aviso a `ESCALATION_PHONE`.
+- Auditoría de secretos: `ANTHROPIC_API_KEY`, `WHATSAPP_ACCESS_TOKEN`,
+  `WHATSAPP_APP_SECRET` y `SUPABASE_SERVICE_ROLE_KEY` nunca pasan por el
+  logger; `.env` en `.gitignore` desde Fase 1.
+- `Dockerfile` (multi-stage, sin volumen — el estado vive en Supabase,
+  el contenedor es stateless) + `docker-compose.yml`.
+
+**Pendiente, fuera de código**: número de WhatsApp nuevo dedicado al bot
+(requiere verificación de Meta Business Manager), y las credenciales
+reales de producción en el `.env` del servidor.
 
 ## Desarrollo local
 
@@ -63,6 +81,36 @@ npm run dev
 `GET /health` para healthcheck. `npm test` corre los tests de Vitest —
 todos corren sin credenciales reales excepto `tests/citas.concurrency.test.ts`,
 que se salta automáticamente si falta `SUPABASE_SERVICE_ROLE_KEY`.
+
+## Desplegar
+
+1. **Crear la App en Meta for Developers** ([developers.facebook.com/apps](https://developers.facebook.com/apps)):
+   "Crear app" → tipo "Business" → agregar el producto **WhatsApp**.
+2. **Registrar el número**: en el panel de WhatsApp de la app, agregar el
+   número de teléfono dedicado al bot (requiere verificarlo por SMS/llamada).
+   Este es el número que reemplaza a `51904719939` en los 6 enlaces
+   `wa.me/...` de `web/` una vez que exista.
+3. **Token permanente vía System User** (no el token temporal de prueba,
+   que expira en 24h): en el Business Manager → Configuración del negocio
+   → Usuarios del sistema → crear uno con rol Admin, asignarle la app de
+   WhatsApp, generar un token con los permisos `whatsapp_business_messaging`
+   y `whatsapp_business_management`, sin fecha de expiración. Ese valor va
+   en `WHATSAPP_ACCESS_TOKEN`.
+4. **Configurar el webhook**: en el panel de WhatsApp de la app →
+   Configuración → Webhook → URL pública del servidor (`https://.../webhook`)
+   + el mismo valor que `WHATSAPP_VERIFY_TOKEN` en `.env` → suscribirse al
+   campo `messages`.
+5. **`WHATSAPP_APP_SECRET`**: Configuración de la app → Básica → "Secreto
+   de la app" (mostrar).
+6. **`WHATSAPP_PHONE_NUMBER_ID`**: panel de WhatsApp de la app, junto al
+   número registrado en el paso 2.
+7. **Desplegar con Docker**:
+   ```bash
+   cp .env.example .env   # completar con las credenciales reales
+   docker compose up -d --build
+   ```
+   El servidor necesita una URL pública con HTTPS para el webhook de
+   Meta (un reverse proxy o el dominio del proveedor de hosting elegido).
 
 ## Decisión de arquitectura: Supabase en vez de SQLite
 
