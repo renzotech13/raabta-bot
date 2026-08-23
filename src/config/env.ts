@@ -23,6 +23,17 @@ const envSchema = z.object({
   RATE_LIMIT_MAX_PER_MINUTE: z.coerce.number().int().positive().default(20),
   DAILY_TOKEN_BUDGET: z.coerce.number().int().positive().default(500_000),
 
+  // Orígenes del panel admin autorizados a llamar a /admin/* (separados por
+  // coma). Vacío = ningún origen cruzado, que es el default seguro.
+  ADMIN_ORIGINS: z.string().default(""),
+
+  // Notificaciones proactivas. Fuera de la ventana de 24h de Meta solo se
+  // puede escribir con una plantilla aprobada, de ahí que el nombre sea
+  // configurable: cambia según lo que apruebe Meta para este negocio.
+  WHATSAPP_TEMPLATE_RECORDATORIO: z.string().default("recordatorio_cita"),
+  WHATSAPP_TEMPLATE_LANG: z.string().default("es"),
+  RECORDATORIO_HORAS_ANTES: z.coerce.number().int().positive().default(24),
+
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });
 

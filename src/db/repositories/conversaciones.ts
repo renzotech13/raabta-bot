@@ -42,3 +42,23 @@ export async function escalarConversacion(conversacionId: string): Promise<void>
   const { error } = await supabase.from("conversaciones").update({ estado: "escalada" }).eq("id", conversacionId);
   if (error) throw error;
 }
+
+/**
+ * Conversación + teléfono del cliente en una sola consulta. La usa el panel
+ * admin al responder: necesita saber a qué número enviar sin hacer un
+ * segundo viaje a clientes.
+ */
+export async function getConversacionConCliente(
+  conversacionId: string,
+): Promise<{ conversacion: Conversacion; telefono: string; clienteId: string } | null> {
+  const { data, error } = await supabase
+    .from("conversaciones")
+    .select("*, clientes!inner(id, telefono)")
+    .eq("id", conversacionId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  const { clientes, ...conversacion } = data as Conversacion & { clientes: { id: string; telefono: string } };
+  return { conversacion, telefono: clientes.telefono, clienteId: clientes.id };
+}

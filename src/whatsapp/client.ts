@@ -31,6 +31,39 @@ export async function sendText(to: string, body: string): Promise<void> {
   });
 }
 
+/**
+ * Único camino para escribirle a alguien fuera de la ventana de servicio de
+ * 24h de Meta: una plantilla pre-aprobada. Los `parametros` rellenan los
+ * {{1}}, {{2}}… del cuerpo, en orden — si la cantidad no coincide con la
+ * plantilla aprobada, Meta rechaza el envío con error 132000.
+ */
+export async function sendTemplate(params: {
+  to: string;
+  plantilla: string;
+  idioma: string;
+  parametros?: string[];
+}): Promise<void> {
+  const components =
+    params.parametros && params.parametros.length > 0
+      ? [
+          {
+            type: "body",
+            parameters: params.parametros.map((text) => ({ type: "text", text })),
+          },
+        ]
+      : undefined;
+
+  await callGraphApi({
+    to: params.to,
+    type: "template",
+    template: {
+      name: params.plantilla,
+      language: { code: params.idioma },
+      ...(components ? { components } : {}),
+    },
+  });
+}
+
 export type ButtonOption = { id: string; title: string };
 
 /** WhatsApp permite un máximo de 3 botones por mensaje interactivo. */

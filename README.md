@@ -66,9 +66,52 @@ real contra la base de datos.
 - `Dockerfile` (multi-stage, sin volumen — el estado vive en Supabase,
   el contenedor es stateless) + `docker-compose.yml`.
 
+**Fase 6 (CRM y notificaciones)** — completa:
+- `routes/admin.ts` — endpoints que consume el panel admin, protegidos por
+  `lib/adminAuth.ts`: valida el JWT de Supabase y exige rol `staff`. El bot
+  corre con service role, así que RLS no lo protege: la verificación es
+  explícita en cada ruta.
+  - `POST /admin/mensajes` — respuesta escrita por una persona. Envía
+    primero y recién después guarda: si WhatsApp rechaza el mensaje, no
+    queda en el historial algo que la clienta nunca recibió.
+  - `POST /admin/promociones` — campaña por plantilla a una lista de
+    clientas.
+- Intervención humana: ya existía a nivel de datos
+  (`conversaciones.estado = 'escalada'` hace que el bot se calle en
+  `handleMessage.ts`). El panel solo alterna ese campo vía RLS, sin pasar
+  por el bot.
+- `mensajes.rol` acepta `'humano'`. **Importante**: `mapRolParaClaude()` lo
+  colapsa a `assistant` al armar el historial — la API de Anthropic solo
+  acepta `user`/`assistant` y un rol crudo rompería toda la conversación.
+- `notifications/recordatorios.ts` — barrido cada 15 min que avisa de las
+  citas que empiezan dentro de `RECORDATORIO_HORAS_ANTES`. Intenta primero
+  texto libre (gratis, si la ventana de 24h está abierta) y cae a plantilla
+  si está cerrada. Un fallo no detiene el resto del barrido y no se
+  reintenta solo, para no insistirle a una clienta cada 15 minutos.
+- Tablas nuevas: `etiquetas` + `cliente_etiquetas` (clasificación libre),
+  `notificaciones` (registro de envíos), y la vista
+  `conversaciones_resumen` para el inbox.
+
 **Pendiente, fuera de código**: número de WhatsApp nuevo dedicado al bot
-(requiere verificación de Meta Business Manager), y las credenciales
-reales de producción en el `.env` del servidor.
+(requiere verificación de Meta Business Manager), las credenciales
+reales de producción en el `.env` del servidor, y **crear y aprobar en Meta
+la plantilla de recordatorio** (ver abajo).
+
+## Plantillas de WhatsApp
+
+Fuera de la ventana de servicio de 24h de Meta, el texto libre se rechaza
+(error 131047): solo se puede escribir con una plantilla pre-aprobada. Un
+recordatorio de cita para mañana casi siempre cae fuera de esa ventana.
+
+Para que los recordatorios funcionen siempre, crear en **WhatsApp Manager →
+Plantillas de mensajes** una plantilla de categoría *Utility* llamada como
+diga `WHATSAPP_TEMPLATE_RECORDATORIO`, con tres variables en el cuerpo:
+
+> Hola {{1}} 💕 Te recordamos tu cita de {{2}} el {{3}} en Raabta Studio.
+> Si necesitas reagendar o cancelar, respóndenos por acá.
+
+Las promociones usan plantillas de categoría *Marketing* (se cobran por
+mensaje) y su nombre se escribe en el panel al lanzar cada campaña.
 
 ## Desarrollo local
 

@@ -20,7 +20,7 @@ export function isWithin24hWindow(lastInboundAt: Date | null, now = new Date()):
  * solo lectura (se usa también para ESCALATION_PHONE, que no es un
  * cliente real).
  */
-async function getLastInboundAt(telefono: string): Promise<Date | null> {
+export async function getLastInboundAt(telefono: string): Promise<Date | null> {
   const { data, error } = await supabase
     .from("conversaciones")
     .select("ultimo_mensaje_at, clientes!inner(telefono)")
@@ -47,4 +47,9 @@ export async function sendTextIfWindowOpen(telefono: string, body: string): Prom
     return;
   }
   await sendText(telefono, body);
+}
+
+/** ¿Se le puede escribir texto libre a este número ahora mismo? */
+export async function isWindowOpenFor(telefono: string): Promise<boolean> {
+  return isWithin24hWindow(await getLastInboundAt(telefono));
 }

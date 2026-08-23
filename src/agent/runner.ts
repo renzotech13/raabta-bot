@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../config/env.js";
 import { logger } from "../lib/logger.js";
-import { getHistorialReciente } from "../db/repositories/mensajes.js";
+import { getHistorialReciente, mapRolParaClaude } from "../db/repositories/mensajes.js";
 import { escalarConversacion } from "../db/repositories/conversaciones.js";
 import { getTodayUsage, incrementTokenUsage } from "../db/repositories/usage.js";
 import { sendTextIfWindowOpen } from "../whatsapp/window.js";
@@ -54,8 +54,11 @@ export async function runAgent(ctx: AgentContext, userMessage: string): Promise<
       buildSystemPrompt(),
     ]);
 
+    // mapRolParaClaude colapsa 'humano' en 'assistant': la API solo acepta
+    // user/assistant, y un mensaje escrito por el staff es, para el cliente,
+    // otra respuesta del negocio.
     const messages: Anthropic.MessageParam[] = historial.map((m) => ({
-      role: m.rol,
+      role: mapRolParaClaude(m.rol),
       content: m.contenido,
     }));
     messages.push({ role: "user", content: userMessage });

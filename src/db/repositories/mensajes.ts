@@ -1,17 +1,28 @@
 import { supabase } from "../client.js";
 
+/**
+ * 'humano' es un mensaje escrito por el staff desde el panel admin. Para
+ * Claude cuenta como turno de assistant (ver mapRolParaClaude): desde la
+ * perspectiva del cliente ambos son "el negocio respondiendo".
+ */
+export type RolMensaje = "user" | "assistant" | "humano";
+
 export type Mensaje = {
   id: string;
   conversacion_id: string;
-  rol: "user" | "assistant";
+  rol: RolMensaje;
   contenido: string;
   wa_message_id: string | null;
   created_at: string;
 };
 
+export function mapRolParaClaude(rol: RolMensaje): "user" | "assistant" {
+  return rol === "user" ? "user" : "assistant";
+}
+
 export async function guardarMensaje(params: {
   conversacionId: string;
-  rol: "user" | "assistant";
+  rol: RolMensaje;
   contenido: string;
   waMessageId?: string;
 }): Promise<Mensaje> {
