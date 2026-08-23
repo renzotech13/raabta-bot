@@ -16,6 +16,14 @@ const envSchema = z.object({
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1),
   GOOGLE_CALENDAR_ID: z.string().min(1),
 
+  // Sync bidireccional con Google Calendar (fase 7): PUBLIC_BASE_URL es la
+  // URL pública del bot, necesaria para registrar el canal de webhooks
+  // (events.watch le dice a Google adónde avisar). El token lo inventa
+  // quien despliega, igual que WHATSAPP_VERIFY_TOKEN: viaja en cada
+  // notificación de Google para confirmar que no es de otro origen.
+  PUBLIC_BASE_URL: z.string().url(),
+  GOOGLE_CALENDAR_WEBHOOK_TOKEN: z.string().min(1),
+
   BUSINESS_TIMEZONE: z.string().default("America/Lima"),
   ESCALATION_PHONE: z.string().min(1),
   SITE_CATALOG_URL: z.string().url().optional(),

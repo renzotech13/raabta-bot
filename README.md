@@ -92,6 +92,36 @@ real contra la base de datos.
   `notificaciones` (registro de envíos), y la vista
   `conversaciones_resumen` para el inbox.
 
+**Fase 7 (sync bidireccional con Google Calendar)** — completa:
+- Hasta acá la sincronización era de una sola vía (Supabase → Calendar): un
+  evento agregado a mano en Google Calendar era invisible para el motor de
+  disponibilidad, con riesgo real de doble reserva.
+- `calendar/google.ts` — `watchCalendar()`/`stopCalendarChannel()` (canal
+  de webhooks vía `events.watch`) y `listCalendarChanges()` (sync
+  incremental por `syncToken`, con reinicio automático a sync completo si
+  Google devuelve 410 por token vencido).
+- `calendar/classify.ts` — función pura que decide qué hacer con cada
+  evento que cambió: los que el bot mismo creó (`citas.google_event_id`) se
+  ignoran siempre, incluida su cancelación — **borrar el evento a mano en
+  Calendar nunca cancela la cita real**, es demasiado destructivo para
+  automatizarlo en silencio; queda solo como discrepancia en los logs. Los
+  eventos externos (agregados directo en Calendar) se reflejan como fila en
+  `bloqueos` (vinculada por `bloqueos.google_event_id`), y se borran solas
+  si el evento externo se cancela. Eventos de todo el día (sin `dateTime`)
+  se ignoran, mismo criterio que las citas con `isWithinBusinessHours`.
+- `routes/calendarWebhook.ts` (`POST /calendar/webhook`) — Google no manda
+  el contenido del cambio, solo un aviso; se responde 200 al toque y la
+  sincronización real corre aparte, validando `X-Goog-Channel-Token`
+  contra `GOOGLE_CALENDAR_WEBHOOK_TOKEN`.
+- El webhook es para reaccionar rápido, no la única garantía: un barrido
+  cada 5 min (`sincronizarCambiosCalendar`) es la red de seguridad, porque
+  los push notifications de Google no están garantizados al 100%. El canal
+  se renueva solo cada 6h si le quedan menos de 24h de vida (Google los
+  expira a los ~7 días).
+- Tabla nueva `calendar_sync_state` (fila única, mismo patrón que
+  `site_content`/`bot_daily_usage`): guarda el `syncToken` y los datos del
+  canal activo.
+
 **Pendiente, fuera de código**: número de WhatsApp nuevo dedicado al bot
 (requiere verificación de Meta Business Manager), las credenciales
 reales de producción en el `.env` del servidor, y **crear y aprobar en Meta

@@ -6,11 +6,18 @@ import { AppError } from "./lib/errors.js";
 import { healthRoutes } from "./routes/health.js";
 import { webhookRoutes } from "./routes/webhook.js";
 import { adminRoutes } from "./routes/admin.js";
+import { calendarWebhookRoutes } from "./routes/calendarWebhook.js";
 import { syncPendingCitas } from "./calendar/retrySync.js";
+import { sincronizarCambiosCalendar, asegurarCanalWebhook } from "./calendar/pushSync.js";
 import { enviarRecordatoriosPendientes } from "./notifications/recordatorios.js";
 
 const CALENDAR_RETRY_INTERVAL_MS = 5 * 60_000;
 const RECORDATORIOS_INTERVAL_MS = 15 * 60_000;
+// Red de seguridad además del webhook: los push notifications de Google no
+// están garantizados al 100%, así que un barrido cada 5 min deja el
+// desfase máximo acotado aunque se pierda algún aviso.
+const CALENDAR_SYNC_INTERVAL_MS = 5 * 60_000;
+const CALENDAR_WATCH_CHECK_INTERVAL_MS = 6 * 60 * 60_000;
 
 const app = Fastify({ loggerInstance: logger, trustProxy: true });
 
@@ -43,6 +50,7 @@ await app.register(cors, {
 await app.register(healthRoutes);
 await app.register(webhookRoutes);
 await app.register(adminRoutes);
+await app.register(calendarWebhookRoutes);
 
 app.setErrorHandler((err, request, reply) => {
   // Un AppError trae un código y un status pensados para el cliente; el
@@ -74,3 +82,25 @@ setInterval(() => {
     logger.error({ err }, "Fallo el barrido de recordatorios de cita");
   });
 }, RECORDATORIOS_INTERVAL_MS);
+
+// Arranca el canal de webhooks y hace una primera pasada de sincronización
+// sin bloquear el arranque del servidor — si Google tarda o falla, el
+// healthcheck de Railway no debe depender de eso.
+asegurarCanalWebhook().catch((err: unknown) => {
+  logger.error({ err }, "No se pudo registrar el canal inicial de webhooks de Google Calendar");
+});
+sincronizarCambiosCalendar().catch((err: unknown) => {
+  logger.error({ err }, "Falló la sincronización inicial de Google Calendar");
+});
+
+setInterval(() => {
+  sincronizarCambiosCalendar().catch((err: unknown) => {
+    logger.error({ err }, "Fallo el barrido periódico de sincronización de Google Calendar");
+  });
+}, CALENDAR_SYNC_INTERVAL_MS);
+
+setInterval(() => {
+  asegurarCanalWebhook().catch((err: unknown) => {
+    logger.error({ err }, "Fallo la renovación del canal de webhooks de Google Calendar");
+  });
+}, CALENDAR_WATCH_CHECK_INTERVAL_MS);
