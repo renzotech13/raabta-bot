@@ -40,4 +40,14 @@ describe("buildEventBody", () => {
     expect(event.start).toEqual({ dateTime: "2026-08-20T13:00:00.000Z", timeZone: "UTC" });
     expect(event.end).toEqual({ dateTime: "2026-08-20T15:00:00.000Z", timeZone: "UTC" });
   });
+
+  it("agrega al cliente como asistente cuando dio su correo", () => {
+    const event = buildEventBody({ ...base, clienteEmail: "maria@example.com" });
+    expect(event.attendees).toEqual([{ email: "maria@example.com" }]);
+  });
+
+  it("no incluye attendees si no hay correo", () => {
+    const event = buildEventBody(base);
+    expect(event.attendees).toBeUndefined();
+  });
 });

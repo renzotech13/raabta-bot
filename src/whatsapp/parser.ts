@@ -19,6 +19,14 @@ const metaAudioMessage = z.object({
   audio: z.object({ id: z.string(), mime_type: z.string().optional() }),
 });
 
+const metaImageMessage = z.object({
+  from: z.string(),
+  id: z.string(),
+  timestamp: z.string(),
+  type: z.literal("image"),
+  image: z.object({ id: z.string(), mime_type: z.string().optional() }),
+});
+
 const metaInteractiveMessage = z.object({
   from: z.string(),
   id: z.string(),
@@ -46,7 +54,13 @@ const metaOtherMessage = z.object({
   type: z.string(),
 });
 
-const metaMessage = z.union([metaTextMessage, metaAudioMessage, metaInteractiveMessage, metaOtherMessage]);
+const metaMessage = z.union([
+  metaTextMessage,
+  metaAudioMessage,
+  metaImageMessage,
+  metaInteractiveMessage,
+  metaOtherMessage,
+]);
 
 const metaContact = z.object({
   wa_id: z.string(),
@@ -84,6 +98,7 @@ const metaWebhookPayload = z.object({
 export type InboundMessage =
   | { kind: "text"; id: string; from: string; timestamp: string; contactName?: string; text: string }
   | { kind: "audio"; id: string; from: string; timestamp: string; contactName?: string; mediaId: string }
+  | { kind: "image"; id: string; from: string; timestamp: string; contactName?: string; mediaId: string; mimeType: string }
   | {
       kind: "interactive_reply";
       id: string;
@@ -122,6 +137,13 @@ export function parseInboundMessages(rawBody: unknown): InboundMessage[] {
           messages.push({ kind: "text", ...base, text: msg.text.body });
         } else if (msg.type === "audio" && "audio" in msg) {
           messages.push({ kind: "audio", ...base, mediaId: msg.audio.id });
+        } else if (msg.type === "image" && "image" in msg) {
+          messages.push({
+            kind: "image",
+            ...base,
+            mediaId: msg.image.id,
+            mimeType: msg.image.mime_type ?? "image/jpeg",
+          });
         } else if (msg.type === "interactive" && "interactive" in msg) {
           const reply = msg.interactive.type === "button_reply" ? msg.interactive.button_reply : msg.interactive.list_reply;
           messages.push({ kind: "interactive_reply", ...base, replyId: reply.id, replyTitle: reply.title });

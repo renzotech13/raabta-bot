@@ -8,6 +8,8 @@ import { isSlotAvailable, type ExistingCita } from "../../lib/availability.js";
 import { BUFFER_MINUTES, MIN_LEAD_MINUTES, BUSINESS_TIMEZONE } from "../../config/business.js";
 import { logger } from "../../lib/logger.js";
 
+export type ComprobanteEstado = "sin_comprobante" | "confirmado" | "en_revision";
+
 export type Cita = {
   id: string;
   cliente_id: string;
@@ -18,6 +20,7 @@ export type Cita = {
   google_event_id: string | null;
   creada_por: "bot" | "humano";
   notas: string | null;
+  comprobante_estado: ComprobanteEstado;
   created_at: string;
   updated_at: string;
 };
@@ -98,6 +101,7 @@ export async function crearCita(params: {
       servicioNombre: servicio.name,
       clienteNombre: cliente.nombre,
       clienteTelefono: cliente.telefono,
+      clienteEmail: cliente.email,
       inicioUtc: new Date(cita.inicio_utc),
       finUtc: new Date(cita.fin_utc),
       notas: cita.notas,
@@ -113,6 +117,48 @@ export async function crearCita(params: {
   }
 
   return { ok: true, cita };
+}
+
+/**
+ * La cita confirmada más reciente de un cliente que todavía requiere
+ * comprobante (tiene adelanto y nadie lo mandó, o el que mandó no se pudo
+ * validar). Es la que se usa como "a cuál se refiere esta imagen" cuando
+ * llega una foto sin que el cliente aclare a qué cita corresponde.
+ */
+export async function getCitaPendienteDeComprobante(
+  clienteId: string,
+): Promise<{ cita: Cita; depositoEsperado: number } | null> {
+  const { data, error } = await supabase
+    .from("citas")
+    .select("*, services!inner(deposit_amount)")
+    .eq("cliente_id", clienteId)
+    .eq("estado", "confirmada")
+    .neq("comprobante_estado", "confirmado")
+    .not("services.deposit_amount", "is", null)
+    .order("inicio_utc", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  const { services, ...cita } = data as Cita & { services: { deposit_amount: number } };
+  return { cita: cita as Cita, depositoEsperado: services.deposit_amount };
+}
+
+export async function guardarComprobante(
+  citaId: string,
+  params: { estado: ComprobanteEstado; path: string; montoDetectado: number | null; nota: string },
+): Promise<void> {
+  const { error } = await supabase
+    .from("citas")
+    .update({
+      comprobante_estado: params.estado,
+      comprobante_path: params.path,
+      comprobante_monto_detectado: params.montoDetectado,
+      comprobante_nota: params.nota,
+    })
+    .eq("id", citaId);
+  if (error) throw error;
 }
 
 async function listarCitasEnRango(desdeUtc: Date, hastaUtc: Date): Promise<ExistingCita[]> {

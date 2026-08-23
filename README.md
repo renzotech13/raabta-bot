@@ -122,6 +122,30 @@ real contra la base de datos.
   `site_content`/`bot_daily_usage`): guarda el `syncToken` y los datos del
   canal activo.
 
+**Fase 8 (comprobantes de pago, invitación a Calendar, mensajes sin markdown)** — completa:
+- El agente ya no alucinaba solo la fecha (Fase 7 lo arregló) — también se detectó en producción que se
+  quedaba dando vueltas (agotando las 5 iteraciones de tools) cuando el día pedido no tenía disponibilidad.
+  `systemPrompt.ts` ahora instruye consultar `fecha_desde` + `fecha_hasta` (+6 días) en una sola llamada, para
+  poder ofrecer los próximos días con cupo sin necesitar una segunda consulta.
+- **Comprobantes de pago por imagen**: `whatsapp/parser.ts` reconoce mensajes tipo `image`.
+  `agent/handleImageMessage.ts` — flujo separado del loop conversacional (como el de audio), determinístico:
+  busca la cita confirmada más reciente del cliente que aún necesita comprobante
+  (`citas.getCitaPendienteDeComprobante`), descarga la imagen de WhatsApp (`whatsapp/client.ts:descargarMedia`,
+  dos pasos: pedir la URL efímera, después descargar con el mismo Bearer token), la sube a
+  Supabase Storage (bucket privado `comprobantes`), y la analiza con Claude Vision
+  (`agent/paymentProof.ts`, `tool_choice` forzado a una tool de reporte estructurado — no se confía en que
+  Claude devuelva JSON "por las buenas"). Si el comprobante parece válido y el monto alcanza, confirma la cita
+  sola (`comprobante_estado = 'confirmado'`); ante cualquier duda genuina (imagen borrosa, monto que no
+  coincide, no parece un comprobante), no rechaza sola — pasa a `'en_revision'` y escala la conversación a un
+  humano. Nunca decide en silencio ni deja una cita mal confirmada sin registro visible.
+- **Invitación de la clienta a Google Calendar**: `clientes.email` (opcional, nunca se pide como requisito).
+  `agendar_cita` lo acepta si la clienta lo da voluntariamente; `eventBuilder.ts` agrega `attendees` al evento
+  cuando hay correo. Una service account sin delegación de dominio no puede invitar asistentes en la mayoría de
+  calendarios — Google rechaza el `insert` completo, no solo el attendee — así que `google.ts` reintenta sin
+  invitado si falla con uno, para que el evento (lo esencial) nunca dependa del correo (lo opcional).
+- **Sin markdown en los mensajes**: el prompt ahora prohíbe explícitamente asteriscos/guiones bajos/almohadillas
+  — se veía como generado por IA en vez de una respuesta humana de WhatsApp.
+
 **Pendiente, fuera de código**: número de WhatsApp nuevo dedicado al bot
 (requiere verificación de Meta Business Manager), las credenciales
 reales de producción en el `.env` del servidor, y **crear y aprobar en Meta

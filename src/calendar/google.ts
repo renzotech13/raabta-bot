@@ -24,14 +24,34 @@ function getCalendarClient(): calendar_v3.Calendar {
  * (dejar google_event_id en null para que retrySync.ts reintente después).
  */
 export async function createCalendarEvent(input: EventInput): Promise<string | null> {
+  const calendar = getCalendarClient();
+  const eventBody = buildEventBody(input);
+
   try {
-    const calendar = getCalendarClient();
     const res = await calendar.events.insert({
       calendarId: env.GOOGLE_CALENDAR_ID,
-      requestBody: buildEventBody(input),
+      requestBody: eventBody,
+      // sendUpdates solo importa si hay attendees; sin ellos Google lo ignora.
+      sendUpdates: eventBody.attendees ? "all" : "none",
     });
     return res.data.id ?? null;
   } catch (err) {
+    // Una service account sin delegación de dominio no puede invitar
+    // asistentes en la mayoría de calendarios — Google rechaza el insert
+    // completo, no solo el attendee. Se reintenta sin invitado en vez de
+    // dejar la cita sin evento: el correo es un extra, la cita en sí no
+    // puede depender de él.
+    if (eventBody.attendees) {
+      logger.warn({ err }, "Falló crear el evento con asistente, reintentando sin invitar por correo");
+      try {
+        const { attendees: _attendees, ...sinAsistente } = eventBody;
+        const res = await calendar.events.insert({ calendarId: env.GOOGLE_CALENDAR_ID, requestBody: sinAsistente });
+        return res.data.id ?? null;
+      } catch (retryErr) {
+        logger.error({ err: retryErr }, "No se pudo crear el evento de Google Calendar (ni siquiera sin asistente)");
+        return null;
+      }
+    }
     logger.error({ err }, "No se pudo crear el evento de Google Calendar");
     return null;
   }

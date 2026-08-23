@@ -7,6 +7,7 @@ export type EventInput = {
   servicioNombre: string;
   clienteNombre: string | null;
   clienteTelefono: string;
+  clienteEmail?: string | null;
   inicioUtc: Date;
   finUtc: Date;
   notas?: string | null;
@@ -17,6 +18,7 @@ export type EventBody = {
   description: string;
   start: { dateTime: string; timeZone: string };
   end: { dateTime: string; timeZone: string };
+  attendees?: { email: string }[];
 };
 
 export function buildEventBody(input: EventInput): EventBody {
@@ -29,5 +31,6 @@ export function buildEventBody(input: EventInput): EventBody {
     description: descripcionLineas.join("\n"),
     start: { dateTime: input.inicioUtc.toISOString(), timeZone: "UTC" },
     end: { dateTime: input.finUtc.toISOString(), timeZone: "UTC" },
+    ...(input.clienteEmail ? { attendees: [{ email: input.clienteEmail }] } : {}),
   };
 }

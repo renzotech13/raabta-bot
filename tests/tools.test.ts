@@ -67,6 +67,17 @@ describe("validación de input de tools (Zod)", () => {
     expect(agendarCitaTool.inputSchema.safeParse({ fecha: "2026-08-20", hora: "10:00" }).success).toBe(false);
   });
 
+  it("agendar_cita acepta correo_cliente opcional, solo si es un email válido", () => {
+    const base = { servicio_id: "microblading", fecha: "2026-08-20", hora: "10:00" };
+    expect(agendarCitaTool.inputSchema.safeParse(base).success).toBe(true);
+    expect(agendarCitaTool.inputSchema.safeParse({ ...base, correo_cliente: "maria@example.com" }).success).toBe(
+      true,
+    );
+    expect(agendarCitaTool.inputSchema.safeParse({ ...base, correo_cliente: "no-es-un-correo" }).success).toBe(
+      false,
+    );
+  });
+
   it("cancelar_cita exige cita_id, motivo es opcional", () => {
     expect(cancelarCitaTool.inputSchema.safeParse({ cita_id: "abc" }).success).toBe(true);
     expect(cancelarCitaTool.inputSchema.safeParse({ cita_id: "abc", motivo: "no puedo ir" }).success).toBe(true);

@@ -36,6 +36,7 @@ export async function syncPendingCitas(): Promise<void> {
       servicioNombre: servicio.name,
       clienteNombre: cliente.nombre,
       clienteTelefono: cliente.telefono,
+      clienteEmail: cliente.email,
       inicioUtc: new Date(cita.inicio_utc as string),
       finUtc: new Date(cita.fin_utc as string),
       notas: cita.notas as string | null,

@@ -23,6 +23,31 @@ async function callGraphApi(body: Record<string, unknown>): Promise<void> {
   }
 }
 
+/**
+ * Los media IDs de WhatsApp no son URLs directas: primero hay que pedirle a
+ * Graph la URL real (efímera, dura minutos) y recién ahí descargar los
+ * bytes, ambos pasos con el mismo Bearer token.
+ */
+export async function descargarMedia(mediaId: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  const metaRes = await fetch(`${GRAPH_BASE_URL}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${env.WHATSAPP_ACCESS_TOKEN}` },
+  });
+  if (!metaRes.ok) {
+    throw new AppError("No se pudo obtener la URL del archivo de WhatsApp", "whatsapp_media_lookup_failed", 502);
+  }
+  const meta = (await metaRes.json()) as { url?: string; mime_type?: string };
+  if (!meta.url) {
+    throw new AppError("Respuesta de media sin URL", "whatsapp_media_lookup_failed", 502);
+  }
+
+  const fileRes = await fetch(meta.url, { headers: { Authorization: `Bearer ${env.WHATSAPP_ACCESS_TOKEN}` } });
+  if (!fileRes.ok) {
+    throw new AppError("No se pudo descargar el archivo de WhatsApp", "whatsapp_media_download_failed", 502);
+  }
+  const buffer = Buffer.from(await fileRes.arrayBuffer());
+  return { buffer, mimeType: meta.mime_type ?? "application/octet-stream" };
+}
+
 export async function sendText(to: string, body: string): Promise<void> {
   await callGraphApi({
     to,

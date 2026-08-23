@@ -6,6 +6,7 @@ import { getOrCreateConversacionActiva, marcarUltimoMensaje, escalarConversacion
 import { guardarMensaje } from "../db/repositories/mensajes.js";
 import { sendTextIfWindowOpen } from "../whatsapp/window.js";
 import { runAgent, FALLBACK_MESSAGE } from "./runner.js";
+import { handleImageMessage } from "./handleImageMessage.js";
 import type { InboundMessage } from "../whatsapp/parser.js";
 
 const AGENT_TIMEOUT_MS = 25_000;
@@ -60,6 +61,11 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
     const texto = "Por ahora no puedo escuchar audios 🙏 ¿me lo escribes en un mensaje de texto?";
     await guardarMensaje({ conversacionId: conversacion.id, rol: "assistant", contenido: texto });
     await sendTextIfWindowOpen(message.from, texto);
+    return;
+  }
+
+  if (message.kind === "image") {
+    await handleImageMessage(message, cliente, conversacion);
     return;
   }
 

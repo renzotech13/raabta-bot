@@ -54,9 +54,9 @@ describe("parseInboundMessages", () => {
     ]);
   });
 
-  it("marca como unsupported un tipo de mensaje no manejado (ej. imagen)", () => {
+  it("marca como unsupported un tipo de mensaje no manejado (ej. sticker)", () => {
     const payload = webhookPayload([
-      { from: "51999888777", id: "wamid.3", timestamp: "1700000002", type: "image" },
+      { from: "51999888777", id: "wamid.3", timestamp: "1700000002", type: "sticker" },
     ]);
     const result = parseInboundMessages(payload);
     expect(result).toEqual([
@@ -66,7 +66,31 @@ describe("parseInboundMessages", () => {
         from: "51999888777",
         timestamp: "1700000002",
         contactName: "Cliente Test",
-        messageType: "image",
+        messageType: "sticker",
+      },
+    ]);
+  });
+
+  it("extrae un mensaje de imagen (comprobante de pago)", () => {
+    const payload = webhookPayload([
+      {
+        from: "51999888777",
+        id: "wamid.4",
+        timestamp: "1700000003",
+        type: "image",
+        image: { id: "media-abc", mime_type: "image/jpeg" },
+      },
+    ]);
+    const result = parseInboundMessages(payload);
+    expect(result).toEqual([
+      {
+        kind: "image",
+        id: "wamid.4",
+        from: "51999888777",
+        timestamp: "1700000003",
+        contactName: "Cliente Test",
+        mediaId: "media-abc",
+        mimeType: "image/jpeg",
       },
     ]);
   });

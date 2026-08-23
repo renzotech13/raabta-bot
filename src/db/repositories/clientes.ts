@@ -4,6 +4,7 @@ export type Cliente = {
   id: string;
   telefono: string;
   nombre: string | null;
+  email: string | null;
   notas: string | null;
   created_at: string;
   updated_at: string;
@@ -42,6 +43,11 @@ export async function findOrCreateByPhone(telefono: string, nombre?: string): Pr
     throw insertError;
   }
   return created as Cliente;
+}
+
+export async function guardarEmailCliente(clienteId: string, email: string): Promise<void> {
+  const { error } = await supabase.from("clientes").update({ email }).eq("id", clienteId);
+  if (error) throw error;
 }
 
 export async function getClienteById(id: string): Promise<Cliente | null> {
