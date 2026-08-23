@@ -1,6 +1,27 @@
 import { listActiveServices, type Service } from "../db/repositories/services.js";
+import { BUSINESS_TIMEZONE } from "../config/business.js";
 
 const ADDRESS = "Av. José Santos Chocano 1330, Los Olivos, Lima";
+
+/**
+ * Claude no sabe qué día es "hoy" — sin esto, alucina una fecha basada en
+ * patrones de su entrenamiento (se vio en producción: calculó fechas de
+ * junio estando en agosto). Se recalcula en cada mensaje porque la
+ * conversación puede seguir abierta días después de la última vez que se
+ * armó el prompt.
+ */
+function formatearFechaHoy(): string {
+  const ahora = new Date();
+  const fecha = ahora.toLocaleDateString("es-PE", {
+    timeZone: BUSINESS_TIMEZONE,
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const iso = ahora.toLocaleDateString("en-CA", { timeZone: BUSINESS_TIMEZONE }); // en-CA = YYYY-MM-DD
+  return `${fecha} (${iso})`;
+}
 const HOURS_TEXT = "Lunes a sábado, 8:00am–12:00pm y 2:00pm–6:00pm. Domingo cerrado.";
 const CANCELLATION_POLICY = "Se puede cancelar una cita con al menos 30 minutos de antelación.";
 
@@ -25,9 +46,14 @@ function formatCatalog(services: Service[]): string {
 export async function buildSystemPrompt(): Promise<string> {
   const services = await listActiveServices();
   const catalog = formatCatalog(services);
+  const fechaHoy = formatearFechaHoy();
 
   return `Eres la recepcionista virtual de Raabta, un centro de belleza en ${ADDRESS}. Atiendes por WhatsApp a
 clientas que quieren agendar, consultar, reagendar o cancelar una cita.
+
+FECHA DE HOY
+${fechaHoy}, hora de Lima. Usa siempre esta fecha (no la que "creas" que es) como punto de partida para calcular
+"hoy", "mañana", "esta semana", etc. al armar fecha_desde/fecha_hasta para las tools.
 
 TU ESTILO
 - Español peruano natural, cálido pero conciso — es WhatsApp, no un correo. Mensajes cortos.

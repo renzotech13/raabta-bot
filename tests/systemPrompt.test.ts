@@ -1,5 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
 
+// systemPrompt.ts ahora importa config/business.js (para la fecha de hoy en
+// la zona horaria del negocio), que a su vez importa config/env.js — se
+// mockea por la misma razón que en window.test.ts.
+vi.mock("../src/config/env.js", () => ({
+  env: {
+    PORT: 3000,
+    WHATSAPP_VERIFY_TOKEN: "test",
+    WHATSAPP_APP_SECRET: "test",
+    WHATSAPP_ACCESS_TOKEN: "test",
+    WHATSAPP_PHONE_NUMBER_ID: "test",
+    ANTHROPIC_API_KEY: "test",
+    SUPABASE_URL: "https://example.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: "test",
+    GOOGLE_SERVICE_ACCOUNT_JSON: "{}",
+    GOOGLE_CALENDAR_ID: "test",
+    BUSINESS_TIMEZONE: "America/Lima",
+    ESCALATION_PHONE: "51900000000",
+    RATE_LIMIT_MAX_PER_MINUTE: 20,
+    DAILY_TOKEN_BUDGET: 500_000,
+    LOG_LEVEL: "silent",
+  },
+}));
+
 vi.mock("../src/db/repositories/services.js", () => ({
   listActiveServices: vi.fn().mockResolvedValue([
     {
@@ -47,6 +70,13 @@ describe("buildSystemPrompt", () => {
     const prompt = await buildSystemPrompt();
     const hennaLine = prompt.split("\n").find((l) => l.includes("Henna"));
     expect(hennaLine).not.toContain("adelanto");
+  });
+
+  it("incluye la fecha de hoy en formato ISO, para que Claude no la invente", async () => {
+    const prompt = await buildSystemPrompt();
+    const isoHoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+    expect(prompt).toContain(isoHoy);
+    expect(prompt).toContain("FECHA DE HOY");
   });
 
   it("incluye horario, dirección y política de cancelación reales", async () => {
