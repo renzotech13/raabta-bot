@@ -8,6 +8,9 @@ import { getConversacionConCliente } from "../db/repositories/conversaciones.js"
 import { guardarMensaje } from "../db/repositories/mensajes.js";
 import { getClienteById } from "../db/repositories/clientes.js";
 import { reservarNotificacion, marcarEnviada, marcarFallida } from "../db/repositories/notificaciones.js";
+import { actualizarEstadoCita } from "../db/repositories/citas.js";
+import { getBloqueoPorId, eliminarBloqueoPorId } from "../db/repositories/bloqueos.js";
+import { deleteCalendarEvent } from "../calendar/google.js";
 import { sendText, sendTemplate } from "../whatsapp/client.js";
 import { isWindowOpenFor } from "../whatsapp/window.js";
 
@@ -20,6 +23,10 @@ const promocionSchema = z.object({
   clienteIds: z.array(z.string().uuid()).min(1).max(200),
   plantilla: z.string().trim().min(1),
   parametros: z.array(z.string()).max(10).optional(),
+});
+
+const citaEstadoSchema = z.object({
+  estado: z.enum(["confirmada", "cancelada", "completada", "no_asistio"]),
 });
 
 export async function adminRoutes(app: FastifyInstance) {
@@ -104,5 +111,47 @@ export async function adminRoutes(app: FastifyInstance) {
 
     logger.info({ enviadas, fallidas: fallidas.length, plantilla }, "Campaña de promoción procesada");
     return reply.send({ enviadas, fallidas });
+  });
+
+  /**
+   * Cambiar el estado de una cita desde el panel. Pasa por acá (no un
+   * update directo a Supabase desde el navegador) justo para poder borrar
+   * el evento de Calendar al cancelar — el navegador nunca tiene las
+   * credenciales de la service account, solo el bot las tiene.
+   */
+  app.post("/admin/citas/:id/estado", async (request: FastifyRequest, reply: FastifyReply) => {
+    await requireStaff(request.headers.authorization);
+
+    const parsed = citaEstadoSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: "invalid_body", detail: parsed.error.issues });
+
+    const { id } = request.params as { id: string };
+    const cita = await actualizarEstadoCita(id, parsed.data.estado);
+    if (!cita) return reply.status(404).send({ error: "cita_no_encontrada" });
+
+    logger.info({ citaId: id, estado: parsed.data.estado }, "Estado de cita actualizado desde el panel");
+    return reply.send({ cita });
+  });
+
+  /**
+   * Borrar un bloqueo desde el panel. Si vino de un evento externo de
+   * Calendar (tiene google_event_id), borra también ese evento — si no,
+   * el evento se queda huérfano en el calendario del negocio aunque acá
+   * ya no exista el bloqueo.
+   */
+  app.post("/admin/bloqueos/:id/eliminar", async (request: FastifyRequest, reply: FastifyReply) => {
+    await requireStaff(request.headers.authorization);
+
+    const { id } = request.params as { id: string };
+    const bloqueo = await getBloqueoPorId(id);
+    if (!bloqueo) return reply.status(404).send({ error: "bloqueo_no_encontrado" });
+
+    if (bloqueo.google_event_id) {
+      await deleteCalendarEvent(bloqueo.google_event_id);
+    }
+    await eliminarBloqueoPorId(id);
+
+    logger.info({ bloqueoId: id }, "Bloqueo eliminado desde el panel");
+    return reply.status(204).send();
   });
 }

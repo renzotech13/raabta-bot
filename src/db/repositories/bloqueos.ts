@@ -14,3 +14,15 @@ export async function getBloqueosEnRango(desdeUtc: Date, hastaUtc: Date): Promis
     finUtc: new Date(row.fin_utc as string),
   }));
 }
+
+/** null si no existe. Se necesita el google_event_id antes de borrar, para poder limpiar el lado de Calendar también. */
+export async function getBloqueoPorId(id: string): Promise<{ id: string; google_event_id: string | null } | null> {
+  const { data, error } = await supabase.from("bloqueos").select("id, google_event_id").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function eliminarBloqueoPorId(id: string): Promise<void> {
+  const { error } = await supabase.from("bloqueos").delete().eq("id", id);
+  if (error) throw error;
+}

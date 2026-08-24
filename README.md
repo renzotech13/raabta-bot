@@ -146,6 +146,24 @@ real contra la base de datos.
 - **Sin markdown en los mensajes**: el prompt ahora prohíbe explícitamente asteriscos/guiones bajos/almohadillas
   — se veía como generado por IA en vez de una respuesta humana de WhatsApp.
 
+**Fase 9 (reserva web real + admin sincronizado con Calendar)** — completa:
+- `routes/public.ts` (`GET /public/disponibilidad`, `POST /public/reservas`) — única superficie sin
+  autenticación del bot, para `reserva.html`. Antes esa página era una maqueta (fecha "hoy" hardcodeada,
+  horas de una fórmula inventada) que escribía a una tabla `bookings` separada de `citas`, sin ninguna
+  protección real contra reservar el mismo horario por WhatsApp y por la web a la vez.
+  `lib/disponibilidadService.ts` centraliza la consulta real (antes vivía duplicada dentro de la tool del
+  agente). Rate limit por IP (`PUBLIC_RATE_LIMIT_MAX_PER_MINUTE`) y CORS en `WEB_ORIGINS`, separado de
+  `ADMIN_ORIGINS` — audiencias distintas.
+- `citas.crearCitasConsecutivas()` — varios servicios reservados juntos (carrito de reserva.html) se agendan
+  como citas consecutivas, una por servicio. Si el servicio N falla (alguien ganó ese horario a mitad de la
+  secuencia), se revierten las citas ya creadas — una reserva a medias es peor que ninguna.
+- El admin dejó de escribir directo a Supabase para cancelar citas o borrar bloqueos — ahora pasa por
+  `POST /admin/citas/:id/estado` y `POST /admin/bloqueos/:id/eliminar`. El motivo: solo el bot tiene las
+  credenciales de la service account, así que un update/delete directo desde el navegador dejaba el evento de
+  Calendar huérfano (la cita se cancelaba en la base pero el evento seguía ahí). Ahora `actualizarEstadoCita()`
+  borra el evento al cancelar, y el endpoint de bloqueos borra el evento externo asociado si lo tenía
+  (`bloqueos.google_event_id`).
+
 **Pendiente, fuera de código**: número de WhatsApp nuevo dedicado al bot
 (requiere verificación de Meta Business Manager), las credenciales
 reales de producción en el `.env` del servidor, y **crear y aprobar en Meta

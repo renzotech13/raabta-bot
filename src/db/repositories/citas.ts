@@ -313,6 +313,29 @@ export async function cancelarCita(citaId: string, telefono: string, motivo?: st
   return { ok: true, cita: data as Cita };
 }
 
+/**
+ * Cambio de estado desde el panel admin (no desde el cliente por
+ * WhatsApp): el staff tiene autoridad completa, así que a diferencia de
+ * cancelarCita() no aplica la política de 30 min ni verifica dueño por
+ * teléfono. Al pasar a 'cancelada' sí borra el evento de Calendar — es
+ * justo el paso que el panel se saltaba escribiendo directo a Supabase,
+ * dejando el evento huérfano.
+ */
+export async function actualizarEstadoCita(citaId: string, estado: Cita["estado"]): Promise<Cita | null> {
+  const { data: existing, error: findError } = await supabase.from("citas").select("*").eq("id", citaId).maybeSingle();
+  if (findError) throw findError;
+  if (!existing) return null;
+
+  const { data, error } = await supabase.from("citas").update({ estado }).eq("id", citaId).select("*").single();
+  if (error) throw error;
+
+  if (estado === "cancelada" && (existing as Cita).google_event_id) {
+    await deleteCalendarEvent((existing as Cita).google_event_id!);
+  }
+
+  return data as Cita;
+}
+
 export async function reagendarCita(params: {
   citaId: string;
   telefono: string;
