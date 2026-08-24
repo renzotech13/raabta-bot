@@ -6,6 +6,7 @@ import { AppError } from "./lib/errors.js";
 import { healthRoutes } from "./routes/health.js";
 import { webhookRoutes } from "./routes/webhook.js";
 import { adminRoutes } from "./routes/admin.js";
+import { publicRoutes } from "./routes/public.js";
 import { calendarWebhookRoutes } from "./routes/calendarWebhook.js";
 import { syncPendingCitas } from "./calendar/retrySync.js";
 import { sincronizarCambiosCalendar, asegurarCanalWebhook } from "./calendar/pushSync.js";
@@ -34,15 +35,17 @@ app.addContentTypeParser("application/json", { parseAs: "buffer" }, (request, bo
   }
 });
 
-// El panel admin corre en otro dominio (Vercel), así que necesita CORS.
-// Lista blanca explícita: sin ADMIN_ORIGINS configurado no se permite
-// ningún origen cruzado, y el webhook de Meta no usa CORS de todos modos.
-const adminOrigins = env.ADMIN_ORIGINS.split(",")
+// El panel admin y el sitio público corren en otros dominios (Vercel), así
+// que necesitan CORS. Lista blanca explícita combinando ambas fuentes: sin
+// nada configurado no se permite ningún origen cruzado, y el webhook de
+// Meta / de Calendar no usan CORS de todos modos (no son llamados desde un
+// navegador).
+const corsOrigins = [...env.ADMIN_ORIGINS.split(","), ...env.WEB_ORIGINS.split(",")]
   .map((o) => o.trim())
   .filter(Boolean);
 
 await app.register(cors, {
-  origin: adminOrigins,
+  origin: corsOrigins,
   methods: ["GET", "POST"],
   allowedHeaders: ["Content-Type", "Authorization"],
 });
@@ -50,6 +53,7 @@ await app.register(cors, {
 await app.register(healthRoutes);
 await app.register(webhookRoutes);
 await app.register(adminRoutes);
+await app.register(publicRoutes);
 await app.register(calendarWebhookRoutes);
 
 app.setErrorHandler((err, request, reply) => {

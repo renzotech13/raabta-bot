@@ -161,6 +161,76 @@ export async function guardarComprobante(
   if (error) throw error;
 }
 
+/**
+ * Borra en duro una cita recién creada por un rollback (no un
+ * "cancelarCita" normal): no aplica la política de 30 min de antelación
+ * porque esto no es un cliente cancelando, es el sistema deshaciendo su
+ * propia escritura a medias tras un conflicto. Best-effort en Calendar —
+ * si falla, retrySync no la va a reintentar porque la fila ya no existe;
+ * queda un evento huérfano que se borra a mano si molesta.
+ */
+async function borrarCitaRollback(cita: Cita): Promise<void> {
+  if (cita.google_event_id) {
+    await deleteCalendarEvent(cita.google_event_id).catch(() => {});
+  }
+  const { error } = await supabase.from("citas").delete().eq("id", cita.id);
+  if (error) logger.error({ err: error, citaId: cita.id }, "No se pudo revertir una cita en el rollback multi-servicio");
+}
+
+export type CrearCitasConsecutivasResult =
+  | { ok: true; citas: Cita[] }
+  | { ok: false; reason: Extract<CrearCitaResult, { ok: false }>["reason"]; servicioIdFallido: string };
+
+/**
+ * Varios servicios reservados juntos (ej. desde el carrito de reserva.html)
+ * se agendan como citas consecutivas — una por servicio, cada una con la
+ * duración real de su servicio — en vez de inventar un concepto de "cita
+ * combo" nuevo en el esquema.
+ *
+ * Si el servicio N falla (alguien más ganó ese horario justo en el medio de
+ * esta secuencia), se revierten las citas 1..N-1 ya creadas: una reserva a
+ * medias (2 de 3 servicios agendados) es peor que ninguna, porque el
+ * cliente cree que tiene todo listo cuando no es así.
+ */
+export async function crearCitasConsecutivas(params: {
+  clienteId: string;
+  servicioIds: string[];
+  inicioUtc: Date;
+  creadaPor: "bot" | "humano";
+  notas?: string;
+}): Promise<CrearCitasConsecutivasResult> {
+  const citasCreadas: Cita[] = [];
+  let cursor = params.inicioUtc;
+
+  for (const servicioId of params.servicioIds) {
+    const servicio = await getServiceById(servicioId);
+    if (!servicio?.duration_minutes) {
+      for (const c of citasCreadas) await borrarCitaRollback(c);
+      return { ok: false, reason: "conflicto_horario", servicioIdFallido: servicioId };
+    }
+
+    const finUtc = new Date(cursor.getTime() + servicio.duration_minutes * 60_000);
+    const resultado = await crearCita({
+      clienteId: params.clienteId,
+      servicioId,
+      inicioUtc: cursor,
+      finUtc,
+      creadaPor: params.creadaPor,
+      ...(params.notas ? { notas: params.notas } : {}),
+    });
+
+    if (!resultado.ok) {
+      for (const c of citasCreadas) await borrarCitaRollback(c);
+      return { ok: false, reason: resultado.reason, servicioIdFallido: servicioId };
+    }
+
+    citasCreadas.push(resultado.cita);
+    cursor = finUtc;
+  }
+
+  return { ok: true, citas: citasCreadas };
+}
+
 async function listarCitasEnRango(desdeUtc: Date, hastaUtc: Date): Promise<ExistingCita[]> {
   const { data, error } = await supabase
     .from("citas")

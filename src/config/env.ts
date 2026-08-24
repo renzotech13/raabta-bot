@@ -35,6 +35,15 @@ const envSchema = z.object({
   // coma). Vacío = ningún origen cruzado, que es el default seguro.
   ADMIN_ORIGINS: z.string().default(""),
 
+  // Orígenes del sitio público autorizados a llamar a /public/* (reserva.html
+  // y afines). Separado de ADMIN_ORIGINS porque son audiencias distintas —
+  // uno es staff autenticado, el otro cualquier visitante del sitio.
+  WEB_ORIGINS: z.string().default(""),
+  // Más estricto que RATE_LIMIT_MAX_PER_MINUTE (WhatsApp): /public/* no
+  // tiene un número de teléfono verificado como llave, solo la IP, más
+  // expuesto a bots.
+  PUBLIC_RATE_LIMIT_MAX_PER_MINUTE: z.coerce.number().int().positive().default(10),
+
   // Notificaciones proactivas. Fuera de la ventana de 24h de Meta solo se
   // puede escribir con una plantilla aprobada, de ahí que el nombre sea
   // configurable: cambia según lo que apruebe Meta para este negocio.
