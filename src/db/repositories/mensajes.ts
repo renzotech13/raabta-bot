@@ -7,12 +7,16 @@ import { supabase } from "../client.js";
  */
 export type RolMensaje = "user" | "assistant" | "humano";
 
+export type TipoMediaMensaje = "image" | "video" | "audio" | "document";
+
 export type Mensaje = {
   id: string;
   conversacion_id: string;
   rol: RolMensaje;
   contenido: string;
   wa_message_id: string | null;
+  media_url: string | null;
+  media_type: TipoMediaMensaje | null;
   created_at: string;
 };
 
@@ -25,6 +29,8 @@ export async function guardarMensaje(params: {
   rol: RolMensaje;
   contenido: string;
   waMessageId?: string;
+  mediaUrl?: string;
+  mediaType?: TipoMediaMensaje;
 }): Promise<Mensaje> {
   const { data, error } = await supabase
     .from("mensajes")
@@ -33,6 +39,8 @@ export async function guardarMensaje(params: {
       rol: params.rol,
       contenido: params.contenido,
       wa_message_id: params.waMessageId ?? null,
+      media_url: params.mediaUrl ?? null,
+      media_type: params.mediaType ?? null,
     })
     .select("*")
     .single();

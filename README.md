@@ -164,6 +164,20 @@ real contra la base de datos.
   borra el evento al cancelar, y el endpoint de bloqueos borra el evento externo asociado si lo tenía
   (`bloqueos.google_event_id`).
 
+**Fase 10 (biblioteca de multimedia)** — completa:
+- Tabla `plantillas_media` (imagen/video/audio/documento, con `descripcion_uso` — el contexto que lee el
+  agente para decidir CUÁNDO mandar cada una) + bucket público `plantillas-media` en Storage: a diferencia de
+  `comprobantes` (privado), acá WhatsApp necesita poder buscar el archivo por URL directa al enviarlo, y es
+  contenido que el staff eligió a propósito para mandarle a clientas — no hay nada sensible que proteger.
+- `whatsapp/client.ts:sendMedia()` + `whatsapp/window.ts:sendMediaIfWindowOpen()` — mismo patrón que el texto:
+  solo se manda si la ventana de 24h está abierta, y esta vez devuelve si se pudo enviar, porque la tool
+  necesita saber si falló para no fingirle a la clienta que sí llegó algo.
+- `agent/tools/enviarMultimedia.ts` — nueva tool; el prompt lista la multimedia activa completa (id + cuándo
+  usarla) en `MULTIMEDIA DISPONIBLE`, igual que ya hacía con el catálogo de servicios.
+- El staff también puede mandar una plantilla a mano desde el CRM (`POST /admin/mensajes` ahora acepta
+  `plantillaId` en vez de `texto` — exactamente uno de los dos). `mensajes.media_url`/`media_type` nuevos para
+  que la burbuja del chat muestre la imagen/video/audio real, no solo un texto describiéndolo.
+
 **Pendiente, fuera de código**: número de WhatsApp nuevo dedicado al bot
 (requiere verificación de Meta Business Manager), las credenciales
 reales de producción en el `.env` del servidor, y **crear y aprobar en Meta

@@ -52,6 +52,20 @@ vi.mock("../src/db/repositories/services.js", () => ({
   ]),
 }));
 
+vi.mock("../src/db/repositories/plantillasMedia.js", () => ({
+  listActivePlantillas: vi.fn().mockResolvedValue([
+    {
+      id: "11111111-1111-1111-1111-111111111111",
+      nombre: "Catálogo de precios",
+      tipo: "image",
+      storage_path: "catalogo.jpg",
+      descripcion_uso: "Cuando pregunten por precios de todos los servicios juntos.",
+      caption: null,
+      activo: true,
+    },
+  ]),
+}));
+
 const { buildSystemPrompt } = await import("../src/agent/systemPrompt.js");
 
 describe("buildSystemPrompt", () => {
@@ -96,5 +110,13 @@ describe("buildSystemPrompt", () => {
     const prompt = await buildSystemPrompt();
     expect(prompt).toContain("escalar_a_humano");
     expect(prompt.toLowerCase()).toContain("salud");
+  });
+
+  it("incluye la multimedia activa con su id y cuándo usarla", async () => {
+    const prompt = await buildSystemPrompt();
+    expect(prompt).toContain("MULTIMEDIA DISPONIBLE");
+    expect(prompt).toContain("11111111-1111-1111-1111-111111111111");
+    expect(prompt).toContain("Catálogo de precios");
+    expect(prompt).toContain("Cuando pregunten por precios de todos los servicios juntos.");
   });
 });

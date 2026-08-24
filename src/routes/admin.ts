@@ -10,14 +10,22 @@ import { getClienteById } from "../db/repositories/clientes.js";
 import { reservarNotificacion, marcarEnviada, marcarFallida } from "../db/repositories/notificaciones.js";
 import { actualizarEstadoCita } from "../db/repositories/citas.js";
 import { getBloqueoPorId, eliminarBloqueoPorId } from "../db/repositories/bloqueos.js";
+import { getPlantillaById, urlPublicaPlantilla } from "../db/repositories/plantillasMedia.js";
 import { deleteCalendarEvent } from "../calendar/google.js";
-import { sendText, sendTemplate } from "../whatsapp/client.js";
+import { sendText, sendTemplate, sendMedia } from "../whatsapp/client.js";
 import { isWindowOpenFor } from "../whatsapp/window.js";
 
-const mensajeSchema = z.object({
-  conversacionId: z.string().uuid(),
-  texto: z.string().trim().min(1).max(4000),
-});
+// Exactamente uno de los dos: o el staff escribe texto, o elige una
+// plantilla multimedia de la biblioteca — nunca ambos ni ninguno.
+const mensajeSchema = z
+  .object({
+    conversacionId: z.string().uuid(),
+    texto: z.string().trim().min(1).max(4000).optional(),
+    plantillaId: z.string().uuid().optional(),
+  })
+  .refine((data) => Boolean(data.texto) !== Boolean(data.plantillaId), {
+    message: "Manda exactamente uno: texto o plantillaId",
+  });
 
 const promocionSchema = z.object({
   clienteIds: z.array(z.string().uuid()).min(1).max(200),
@@ -44,7 +52,7 @@ export async function adminRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(400).send({ error: "invalid_body", detail: parsed.error.issues });
     }
-    const { conversacionId, texto } = parsed.data;
+    const { conversacionId, texto, plantillaId } = parsed.data;
 
     const found = await getConversacionConCliente(conversacionId);
     if (!found) return reply.status(404).send({ error: "conversacion_no_encontrada" });
@@ -60,8 +68,24 @@ export async function adminRoutes(app: FastifyInstance) {
       });
     }
 
-    await sendText(found.telefono, texto);
-    const mensaje = await guardarMensaje({ conversacionId, rol: "humano", contenido: texto });
+    let mensaje;
+    if (texto) {
+      await sendText(found.telefono, texto);
+      mensaje = await guardarMensaje({ conversacionId, rol: "humano", contenido: texto });
+    } else {
+      const plantilla = await getPlantillaById(plantillaId!);
+      if (!plantilla) return reply.status(404).send({ error: "plantilla_no_encontrada" });
+
+      const url = urlPublicaPlantilla(plantilla.storage_path);
+      await sendMedia({ to: found.telefono, tipo: plantilla.tipo, link: url, caption: plantilla.caption });
+      mensaje = await guardarMensaje({
+        conversacionId,
+        rol: "humano",
+        contenido: `[${plantilla.tipo}] ${plantilla.nombre}`,
+        mediaUrl: url,
+        mediaType: plantilla.tipo,
+      });
+    }
 
     logger.info({ conversacionId }, "Mensaje humano enviado desde el panel");
     return reply.status(201).send({ mensaje });

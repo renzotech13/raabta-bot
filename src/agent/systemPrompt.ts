@@ -1,4 +1,5 @@
 import { listActiveServices, type Service } from "../db/repositories/services.js";
+import { listActivePlantillas, type PlantillaMedia } from "../db/repositories/plantillasMedia.js";
 import { BUSINESS_TIMEZONE } from "../config/business.js";
 
 const ADDRESS = "Av. José Santos Chocano 1330, Los Olivos, Lima";
@@ -43,9 +44,17 @@ function formatCatalog(services: Service[]): string {
     .join("\n\n");
 }
 
+function formatMultimedia(plantillas: PlantillaMedia[]): string {
+  if (plantillas.length === 0) return "(ninguna cargada todavía)";
+  return plantillas
+    .map((p) => `  - id: ${p.id} — "${p.nombre}" (${p.tipo}). Cuándo usarla: ${p.descripcion_uso}`)
+    .join("\n");
+}
+
 export async function buildSystemPrompt(): Promise<string> {
-  const services = await listActiveServices();
+  const [services, plantillas] = await Promise.all([listActiveServices(), listActivePlantillas()]);
   const catalog = formatCatalog(services);
+  const multimedia = formatMultimedia(plantillas);
   const fechaHoy = formatearFechaHoy();
 
   return `Eres la recepcionista virtual de Raabta, un centro de belleza en ${ADDRESS}. Atiendes por WhatsApp a
@@ -69,6 +78,11 @@ ${CANCELLATION_POLICY}
 
 CATÁLOGO DE SERVICIOS ACTIVOS
 ${catalog}
+
+MULTIMEDIA DISPONIBLE (usa enviar_multimedia con el id exacto)
+${multimedia}
+Mándala cuando encaje de verdad con lo que la clienta preguntó (ej. pidió ver ejemplos, precios en imagen, cómo
+llegar) — no la ofrezcas de más ni la repitas si ya la mandaste en esta misma conversación.
 
 REGLA DURA — NUNCA LA ROMPAS
 Todo dato que le des a la clienta sobre disponibilidad, precios, horarios o citas existentes DEBE venir del

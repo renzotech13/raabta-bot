@@ -89,6 +89,30 @@ export async function sendTemplate(params: {
   });
 }
 
+export type TipoMediaWhatsApp = "image" | "video" | "audio" | "document";
+
+/**
+ * Envía por `link` (una URL pública) en vez de subir el archivo primero a
+ * la librería de media de WhatsApp — más simple, sin necesidad de mantener
+ * un mapeo aparte de media_id por plantilla. `audio` de WhatsApp no acepta
+ * caption (la API lo ignora si se manda), el resto sí.
+ */
+export async function sendMedia(params: {
+  to: string;
+  tipo: TipoMediaWhatsApp;
+  link: string;
+  caption?: string | null;
+}): Promise<void> {
+  const media: Record<string, unknown> = { link: params.link };
+  if (params.caption && params.tipo !== "audio") media.caption = params.caption;
+
+  await callGraphApi({
+    to: params.to,
+    type: params.tipo,
+    [params.tipo]: media,
+  });
+}
+
 export type ButtonOption = { id: string; title: string };
 
 /** WhatsApp permite un máximo de 3 botones por mensaje interactivo. */

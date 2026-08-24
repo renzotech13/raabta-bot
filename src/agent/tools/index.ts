@@ -7,6 +7,7 @@ import { consultarMisCitasTool } from "./consultarMisCitas.js";
 import { reagendarCitaTool } from "./reagendarCita.js";
 import { cancelarCitaTool } from "./cancelarCita.js";
 import { escalarAHumanoTool } from "./escalarAHumano.js";
+import { enviarMultimediaTool } from "./enviarMultimedia.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ALL_TOOLS: AgentTool<any>[] = [
@@ -17,6 +18,7 @@ const ALL_TOOLS: AgentTool<any>[] = [
   reagendarCitaTool,
   cancelarCitaTool,
   escalarAHumanoTool,
+  enviarMultimediaTool,
 ];
 
 export function getToolDefinitions(): Anthropic.Tool[] {

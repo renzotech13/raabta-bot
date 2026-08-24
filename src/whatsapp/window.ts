@@ -1,5 +1,5 @@
 import { supabase } from "../db/client.js";
-import { sendText } from "./client.js";
+import { sendText, sendMedia, type TipoMediaWhatsApp } from "./client.js";
 import { logger } from "../lib/logger.js";
 
 const WINDOW_MS = 24 * 60 * 60_000;
@@ -52,4 +52,25 @@ export async function sendTextIfWindowOpen(telefono: string, body: string): Prom
 /** ¿Se le puede escribir texto libre a este número ahora mismo? */
 export async function isWindowOpenFor(telefono: string): Promise<boolean> {
   return isWithin24hWindow(await getLastInboundAt(telefono));
+}
+
+/**
+ * Igual que sendTextIfWindowOpen pero para media, y devuelve si se llegó a
+ * enviar — el tool del agente necesita saberlo para poder avisarle a
+ * Claude que no se pudo mandar en vez de fingir que sí (y que Claude no le
+ * diga a la clienta "te mandé la foto" cuando en realidad no salió nada).
+ */
+export async function sendMediaIfWindowOpen(params: {
+  telefono: string;
+  tipo: TipoMediaWhatsApp;
+  link: string;
+  caption?: string | null;
+}): Promise<boolean> {
+  const lastInboundAt = await getLastInboundAt(params.telefono);
+  if (!isWithin24hWindow(lastInboundAt)) {
+    logger.warn({ telefono: params.telefono, lastInboundAt }, "Ventana de 24h cerrada, no se pudo mandar multimedia");
+    return false;
+  }
+  await sendMedia({ to: params.telefono, tipo: params.tipo, link: params.link, caption: params.caption ?? null });
+  return true;
 }
