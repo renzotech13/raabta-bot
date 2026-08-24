@@ -49,7 +49,9 @@ const envSchema = z.object({
   // configurable: cambia según lo que apruebe Meta para este negocio.
   WHATSAPP_TEMPLATE_RECORDATORIO: z.string().default("recordatorio_cita"),
   WHATSAPP_TEMPLATE_LANG: z.string().default("es"),
-  RECORDATORIO_HORAS_ANTES: z.coerce.number().int().positive().default(24),
+  // Respaldo si la tabla `configuracion` no responde; el valor real que se
+  // usa a diario se edita desde el admin (Disponibilidad → Recordatorios).
+  RECORDATORIO_HORAS_ANTES: z.coerce.number().int().positive().default(1),
 
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });

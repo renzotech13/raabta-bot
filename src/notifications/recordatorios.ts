@@ -9,6 +9,7 @@ import {
   marcarEnviada,
   marcarFallida,
 } from "../db/repositories/notificaciones.js";
+import { getRecordatorioHorasAntes } from "../db/repositories/configuracion.js";
 
 /** "lunes 25 de agosto a las 3:00 p. m." en la zona horaria del negocio. */
 export function formatearFechaCita(inicioUtc: string): string {
@@ -68,7 +69,8 @@ async function enviarRecordatorio(params: {
  * cliente con un envío roto cada 15 minutos.
  */
 export async function enviarRecordatoriosPendientes(): Promise<void> {
-  const pendientes = await listarCitasSinRecordatorio(env.RECORDATORIO_HORAS_ANTES);
+  const horasAntes = await getRecordatorioHorasAntes();
+  const pendientes = await listarCitasSinRecordatorio(horasAntes);
   if (pendientes.length === 0) return;
 
   logger.info({ cantidad: pendientes.length }, "Citas pendientes de recordatorio");
