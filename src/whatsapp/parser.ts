@@ -121,6 +121,18 @@ export type InboundMessage =
     }
   | { kind: "unsupported"; id: string; from: string; timestamp: string; contactName?: string; messageType: string };
 
+/**
+ * null si el payload calza con lo que Meta debería mandar; si no, el
+ * detalle de zod — para poder loguearlo en vez de descartar el webhook en
+ * silencio absoluto (pasó al menos una vez: un mensaje entrante que jamás
+ * dejó rastro en ningún lado, ni siquiera un log, porque no calzaba con el
+ * esquema y las dos funciones de abajo simplemente devuelven []).
+ */
+export function describeParsePayloadError(rawBody: unknown): string | null {
+  const result = metaWebhookPayload.safeParse(rawBody);
+  return result.success ? null : JSON.stringify(result.error.issues);
+}
+
 export type FailedStatus = { waMessageId: string; errorMessage: string };
 
 /**

@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../config/env.js";
 import { logger } from "../lib/logger.js";
-import { parseInboundMessages, parseFailedStatuses } from "../whatsapp/parser.js";
+import { parseInboundMessages, parseFailedStatuses, describeParsePayloadError } from "../whatsapp/parser.js";
 import { handleInboundMessage } from "../agent/handleMessage.js";
 import { marcarMensajeFallido } from "../db/repositories/mensajes.js";
 
@@ -46,6 +46,15 @@ async function processFailedStatuses(body: unknown): Promise<void> {
 }
 
 async function processWebhookAsync(body: unknown): Promise<void> {
+  const parseError = describeParsePayloadError(body);
+  if (parseError) {
+    // Antes esto se descartaba en silencio total (ni un log): un mensaje
+    // entrante que no calzara con el esquema simplemente desaparecía. Con
+    // esto al menos queda registrado en Railway para poder diagnosticarlo.
+    logger.warn({ parseError, body }, "Payload de webhook no calzó con el esquema esperado, se ignora");
+    return;
+  }
+
   await processFailedStatuses(body);
 
   const messages = parseInboundMessages(body);
