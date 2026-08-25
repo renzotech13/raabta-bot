@@ -30,14 +30,14 @@ export const enviarMultimediaTool: AgentTool<z.infer<typeof inputSchema>> = {
     }
 
     const url = urlPublicaPlantilla(plantilla.storage_path);
-    const enviado = await sendMediaIfWindowOpen({
+    const waMessageId = await sendMediaIfWindowOpen({
       telefono: ctx.telefono,
       tipo: plantilla.tipo,
       link: url,
       caption: plantilla.caption,
     });
 
-    if (!enviado) {
+    if (!waMessageId) {
       return { ok: false, error: "ventana_24h_cerrada" };
     }
 
@@ -47,6 +47,7 @@ export const enviarMultimediaTool: AgentTool<z.infer<typeof inputSchema>> = {
       contenido: `[${plantilla.tipo}] ${plantilla.nombre}`,
       mediaUrl: url,
       mediaType: plantilla.tipo,
+      waMessageId,
     });
 
     return { ok: true, nombre: plantilla.nombre };

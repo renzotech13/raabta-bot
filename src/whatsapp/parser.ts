@@ -67,6 +67,14 @@ const metaContact = z.object({
   profile: z.object({ name: z.string() }).optional(),
 });
 
+const metaStatus = z.object({
+  id: z.string(),
+  status: z.string(),
+  errors: z
+    .array(z.object({ code: z.number().optional(), title: z.string().optional(), message: z.string().optional() }))
+    .optional(),
+});
+
 const metaChangeValue = z.object({
   messaging_product: z.literal("whatsapp"),
   metadata: z.object({
@@ -75,9 +83,12 @@ const metaChangeValue = z.object({
   }),
   contacts: z.array(metaContact).optional(),
   messages: z.array(metaMessage).optional(),
-  // "statuses" (delivery/read receipts) llega en su propio change; no lo
-  // declaramos porque nunca nos interesa su contenido, solo detectamos que
-  // no trae "messages" para ignorarlo.
+  // Delivery/read receipts de mensajes que MANDAMOS nosotros (no de los que
+  // recibimos). Solo nos interesa "failed": un envío que Meta aceptó
+  // (200 OK, wa_message_id asignado) pero no pudo entregar después — típico
+  // cuando no logra descargar un media por link. "sent"/"delivered"/"read"
+  // se ignoran a propósito, no hay ninguna acción que tomar con esos.
+  statuses: z.array(metaStatus).optional(),
 });
 
 const metaWebhookPayload = z.object({
@@ -109,6 +120,34 @@ export type InboundMessage =
       replyTitle: string;
     }
   | { kind: "unsupported"; id: string; from: string; timestamp: string; contactName?: string; messageType: string };
+
+export type FailedStatus = { waMessageId: string; errorMessage: string };
+
+/**
+ * Extrae solo los eventos de estado "failed" (envíos nuestros que Meta no
+ * pudo entregar). El resto de estados ("sent", "delivered", "read") se
+ * descarta acá mismo: no hay nada que hacer con ellos hoy.
+ */
+export function parseFailedStatuses(rawBody: unknown): FailedStatus[] {
+  const result = metaWebhookPayload.safeParse(rawBody);
+  if (!result.success) return [];
+
+  const fallidos: FailedStatus[] = [];
+  for (const entry of result.data.entry) {
+    for (const change of entry.changes) {
+      if (change.field !== "messages" || !change.value.statuses) continue;
+      for (const status of change.value.statuses) {
+        if (status.status !== "failed") continue;
+        const detalle = status.errors?.[0];
+        const errorMessage = detalle
+          ? `${detalle.title ?? "Error"} (${detalle.code ?? "sin código"})${detalle.message ? `: ${detalle.message}` : ""}`
+          : "Meta reportó el envío como fallido, sin detalle.";
+        fallidos.push({ waMessageId: status.id, errorMessage });
+      }
+    }
+  }
+  return fallidos;
+}
 
 /**
  * Extrae los mensajes de usuario relevantes de un payload de webhook de Meta.

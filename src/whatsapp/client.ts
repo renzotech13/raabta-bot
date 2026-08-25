@@ -5,7 +5,14 @@ import { AppError } from "../lib/errors.js";
 const GRAPH_API_VERSION = "v21.0";
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 
-async function callGraphApi(body: Record<string, unknown>): Promise<void> {
+/**
+ * Devuelve el wa_message_id que Meta asigna al aceptar el envío. Ese
+ * "aceptado" NO es "entregado": para media por link, Meta puede responder
+ * 200 acá y fallar minutos después al no poder descargar el archivo — ese
+ * fallo llega aparte, como evento "failed" en el webhook de statuses (ver
+ * webhook.ts). Guardar este id es lo que permite correlacionar ambas cosas.
+ */
+async function callGraphApi(body: Record<string, unknown>): Promise<string> {
   const url = `${GRAPH_BASE_URL}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
   const res = await fetch(url, {
     method: "POST",
@@ -21,6 +28,9 @@ async function callGraphApi(body: Record<string, unknown>): Promise<void> {
     logger.error({ status: res.status, errorBody }, "Falló el envío a WhatsApp Graph API");
     throw new AppError("No se pudo enviar el mensaje de WhatsApp", "whatsapp_send_failed", 502);
   }
+
+  const data = (await res.json()) as { messages?: { id: string }[] };
+  return data.messages?.[0]?.id ?? "";
 }
 
 /**
@@ -48,8 +58,8 @@ export async function descargarMedia(mediaId: string): Promise<{ buffer: Buffer;
   return { buffer, mimeType: meta.mime_type ?? "application/octet-stream" };
 }
 
-export async function sendText(to: string, body: string): Promise<void> {
-  await callGraphApi({
+export async function sendText(to: string, body: string): Promise<string> {
+  return callGraphApi({
     to,
     type: "text",
     text: { body, preview_url: false },
@@ -67,7 +77,7 @@ export async function sendTemplate(params: {
   plantilla: string;
   idioma: string;
   parametros?: string[];
-}): Promise<void> {
+}): Promise<string> {
   const components =
     params.parametros && params.parametros.length > 0
       ? [
@@ -78,7 +88,7 @@ export async function sendTemplate(params: {
         ]
       : undefined;
 
-  await callGraphApi({
+  return callGraphApi({
     to: params.to,
     type: "template",
     template: {
@@ -102,11 +112,11 @@ export async function sendMedia(params: {
   tipo: TipoMediaWhatsApp;
   link: string;
   caption?: string | null;
-}): Promise<void> {
+}): Promise<string> {
   const media: Record<string, unknown> = { link: params.link };
   if (params.caption && params.tipo !== "audio") media.caption = params.caption;
 
-  await callGraphApi({
+  return callGraphApi({
     to: params.to,
     type: params.tipo,
     [params.tipo]: media,
@@ -116,11 +126,11 @@ export async function sendMedia(params: {
 export type ButtonOption = { id: string; title: string };
 
 /** WhatsApp permite un máximo de 3 botones por mensaje interactivo. */
-export async function sendButtons(to: string, body: string, options: ButtonOption[]): Promise<void> {
+export async function sendButtons(to: string, body: string, options: ButtonOption[]): Promise<string> {
   if (options.length === 0 || options.length > 3) {
     throw new AppError("sendButtons requiere entre 1 y 3 opciones", "invalid_buttons", 500);
   }
-  await callGraphApi({
+  return callGraphApi({
     to,
     type: "interactive",
     interactive: {

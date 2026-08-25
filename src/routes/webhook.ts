@@ -2,8 +2,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../config/env.js";
 import { logger } from "../lib/logger.js";
-import { parseInboundMessages } from "../whatsapp/parser.js";
+import { parseInboundMessages, parseFailedStatuses } from "../whatsapp/parser.js";
 import { handleInboundMessage } from "../agent/handleMessage.js";
+import { marcarMensajeFallido } from "../db/repositories/mensajes.js";
 
 // Fase 1: dedup en memoria (suficiente para una sola instancia). Cuando
 // pasemos a persistencia real (Fase 2, Supabase), esto debe respaldarse en
@@ -32,7 +33,21 @@ function verifySignature(rawBody: Buffer, signatureHeader: string | undefined): 
   return timingSafeEqual(expectedBuf, providedBuf);
 }
 
+async function processFailedStatuses(body: unknown): Promise<void> {
+  const fallidos = parseFailedStatuses(body);
+  for (const fallo of fallidos) {
+    logger.error({ waMessageId: fallo.waMessageId, error: fallo.errorMessage }, "WhatsApp no pudo entregar un mensaje");
+    await marcarMensajeFallido(fallo.waMessageId, fallo.errorMessage).catch((err: unknown) => {
+      // Puede no haber fila (p. ej. un recordatorio, que no se guarda en
+      // mensajes): no es un error real, solo no hay nada que marcar.
+      logger.warn({ err, waMessageId: fallo.waMessageId }, "No se pudo marcar el mensaje fallido en la BD");
+    });
+  }
+}
+
 async function processWebhookAsync(body: unknown): Promise<void> {
+  await processFailedStatuses(body);
+
   const messages = parseInboundMessages(body);
   for (const message of messages) {
     if (isDuplicate(message.id)) {

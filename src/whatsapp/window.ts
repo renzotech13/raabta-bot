@@ -39,14 +39,17 @@ export async function getLastInboundAt(telefono: string): Promise<Date | null> {
  * la respuesta normal al cliente como para el aviso a ESCALATION_PHONE,
  * que corre la misma restricción si el staff no le escribió al número
  * del bot en las últimas 24h.
+ *
+ * Devuelve el wa_message_id (para poder correlacionar un fallo de entrega
+ * asíncrono después) o null si ni se intentó mandar.
  */
-export async function sendTextIfWindowOpen(telefono: string, body: string): Promise<void> {
+export async function sendTextIfWindowOpen(telefono: string, body: string): Promise<string | null> {
   const lastInboundAt = await getLastInboundAt(telefono);
   if (!isWithin24hWindow(lastInboundAt)) {
     logger.warn({ telefono, lastInboundAt }, "Ventana de 24h cerrada, requiere seguimiento manual");
-    return;
+    return null;
   }
-  await sendText(telefono, body);
+  return sendText(telefono, body);
 }
 
 /** ¿Se le puede escribir texto libre a este número ahora mismo? */
@@ -55,22 +58,22 @@ export async function isWindowOpenFor(telefono: string): Promise<boolean> {
 }
 
 /**
- * Igual que sendTextIfWindowOpen pero para media, y devuelve si se llegó a
- * enviar — el tool del agente necesita saberlo para poder avisarle a
- * Claude que no se pudo mandar en vez de fingir que sí (y que Claude no le
- * diga a la clienta "te mandé la foto" cuando en realidad no salió nada).
+ * Igual que sendTextIfWindowOpen pero para media, y devuelve el
+ * wa_message_id (o null si la ventana estaba cerrada y ni se intentó) — el
+ * tool del agente necesita saber si se pudo mandar para poder avisarle a
+ * Claude en vez de fingir que sí (y que Claude no le diga a la clienta "te
+ * mandé la foto" cuando en realidad no salió nada).
  */
 export async function sendMediaIfWindowOpen(params: {
   telefono: string;
   tipo: TipoMediaWhatsApp;
   link: string;
   caption?: string | null;
-}): Promise<boolean> {
+}): Promise<string | null> {
   const lastInboundAt = await getLastInboundAt(params.telefono);
   if (!isWithin24hWindow(lastInboundAt)) {
     logger.warn({ telefono: params.telefono, lastInboundAt }, "Ventana de 24h cerrada, no se pudo mandar multimedia");
-    return false;
+    return null;
   }
-  await sendMedia({ to: params.telefono, tipo: params.tipo, link: params.link, caption: params.caption ?? null });
-  return true;
+  return sendMedia({ to: params.telefono, tipo: params.tipo, link: params.link, caption: params.caption ?? null });
 }

@@ -3,7 +3,7 @@ import { logger } from "../lib/logger.js";
 import { isRateLimited } from "../lib/rateLimit.js";
 import { findOrCreateByPhone } from "../db/repositories/clientes.js";
 import { getOrCreateConversacionActiva, marcarUltimoMensaje, escalarConversacion } from "../db/repositories/conversaciones.js";
-import { guardarMensaje } from "../db/repositories/mensajes.js";
+import { guardarMensaje, marcarWaMessageId } from "../db/repositories/mensajes.js";
 import { sendTextIfWindowOpen } from "../whatsapp/window.js";
 import { runAgent, FALLBACK_MESSAGE } from "./runner.js";
 import { handleImageMessage } from "./handleImageMessage.js";
@@ -59,8 +59,9 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
 
   if (message.kind === "audio") {
     const texto = "Por ahora no puedo escuchar audios 🙏 ¿me lo escribes en un mensaje de texto?";
-    await guardarMensaje({ conversacionId: conversacion.id, rol: "assistant", contenido: texto });
-    await sendTextIfWindowOpen(message.from, texto);
+    const guardado = await guardarMensaje({ conversacionId: conversacion.id, rol: "assistant", contenido: texto });
+    const waMessageId = await sendTextIfWindowOpen(message.from, texto);
+    if (waMessageId) await marcarWaMessageId(guardado.id, waMessageId).catch(() => {});
     return;
   }
 
@@ -95,6 +96,7 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
     await escalarConversacion(conversacion.id).catch(() => {});
   }
 
-  await guardarMensaje({ conversacionId: conversacion.id, rol: "assistant", contenido: respuesta });
-  await sendTextIfWindowOpen(message.from, respuesta);
+  const guardado = await guardarMensaje({ conversacionId: conversacion.id, rol: "assistant", contenido: respuesta });
+  const waMessageId = await sendTextIfWindowOpen(message.from, respuesta);
+  if (waMessageId) await marcarWaMessageId(guardado.id, waMessageId).catch(() => {});
 }

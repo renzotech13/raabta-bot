@@ -70,20 +70,21 @@ export async function adminRoutes(app: FastifyInstance) {
 
     let mensaje;
     if (texto) {
-      await sendText(found.telefono, texto);
-      mensaje = await guardarMensaje({ conversacionId, rol: "humano", contenido: texto });
+      const waMessageId = await sendText(found.telefono, texto);
+      mensaje = await guardarMensaje({ conversacionId, rol: "humano", contenido: texto, waMessageId });
     } else {
       const plantilla = await getPlantillaById(plantillaId!);
       if (!plantilla) return reply.status(404).send({ error: "plantilla_no_encontrada" });
 
       const url = urlPublicaPlantilla(plantilla.storage_path);
-      await sendMedia({ to: found.telefono, tipo: plantilla.tipo, link: url, caption: plantilla.caption });
+      const waMessageId = await sendMedia({ to: found.telefono, tipo: plantilla.tipo, link: url, caption: plantilla.caption });
       mensaje = await guardarMensaje({
         conversacionId,
         rol: "humano",
         contenido: `[${plantilla.tipo}] ${plantilla.nombre}`,
         mediaUrl: url,
         mediaType: plantilla.tipo,
+        waMessageId,
       });
     }
 

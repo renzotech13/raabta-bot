@@ -17,6 +17,7 @@ export type Mensaje = {
   wa_message_id: string | null;
   media_url: string | null;
   media_type: TipoMediaMensaje | null;
+  error_entrega: string | null;
   created_at: string;
 };
 
@@ -46,6 +47,31 @@ export async function guardarMensaje(params: {
     .single();
   if (error) throw error;
   return data as Mensaje;
+}
+
+/**
+ * Une el mensaje ya guardado con el id que Meta asignó al aceptar el envío
+ * (se guarda aparte porque en handleMessage.ts/handleImageMessage.ts el
+ * mensaje se inserta ANTES de intentar mandarlo, así que el id llega después).
+ */
+export async function marcarWaMessageId(mensajeId: string, waMessageId: string): Promise<void> {
+  const { error } = await supabase.from("mensajes").update({ wa_message_id: waMessageId }).eq("id", mensajeId);
+  if (error) throw error;
+}
+
+/**
+ * Meta a veces acepta un envío (200 OK, wa_message_id asignado) y recién
+ * falla después al no poder descargarlo o entregarlo — ese fallo llega
+ * como un evento "failed" aparte en el webhook de statuses. Sin esto, el
+ * mensaje queda en el panel como "enviado" aunque nunca le llegó nada a
+ * la clienta.
+ */
+export async function marcarMensajeFallido(waMessageId: string, error: string): Promise<void> {
+  const { error: dbError } = await supabase
+    .from("mensajes")
+    .update({ error_entrega: error.slice(0, 500) })
+    .eq("wa_message_id", waMessageId);
+  if (dbError) throw dbError;
 }
 
 /** Últimos N mensajes de una conversación, o de las últimas `sinceHours` horas, lo que sea menor. */
